@@ -1,9 +1,11 @@
 import pygame
 import sys
+import random
 from .player import Player
 from .map import GameMap
 from .ui import UI
 from .enemy import Enemy
+from .item import Item
 from .particle_system import ParticleSystem
 from .enemy_spawner import EnemySpawner
 from .npc_spawner import NPCSpawner
@@ -37,6 +39,7 @@ class GameClient:
         # Initialize enemy spawner and enemies list
         self.enemy_spawner = EnemySpawner(self.game_map)
         self.enemies = []
+        self.items = []  # List to store active items
         self._spawn_test_enemies()
         
         # Initialize NPC spawner and spawn some NPCs
@@ -188,7 +191,35 @@ class GameClient:
                         enemy.x + PLAYER_SIZE/2,
                         enemy.y + PLAYER_SIZE/2
                     )
+                # Chance to spawn a health potion
+                if random.random() < 0.3:  # 30% chance
+                    potion_type = "greater_health_potion" if random.random() < 0.3 else "health_potion"
+                    item = Item(enemy.x, enemy.y, potion_type)
+                    self.items.append(item)
                 self.enemies.remove(enemy)
+                
+        # Update items and check for pickups
+        for item in self.items[:]:  # Copy list to safely remove while iterating
+            item.update(dt)
+            # Calculate distance to player
+            dx = self.player.x - item.x
+            dy = self.player.y - item.y
+            distance = (dx * dx + dy * dy) ** 0.5
+            
+            if distance <= item.pickup_range:
+                # Heal the player
+                self.player.current_health = min(
+                    self.player.max_health,
+                    self.player.current_health + item.heal_amount
+                )
+                # Create heal effect
+                if self.particle_system:
+                    self.particle_system.create_hit_effect(
+                        self.player.rect.centerx,
+                        self.player.rect.centery,
+                        color=(0, 255, 0)  # Green for healing
+                    )
+                self.items.remove(item)
         
         # Try to spawn new enemy
         if new_enemy := self.enemy_spawner.update(dt, self.player, self.enemies):
@@ -257,6 +288,10 @@ class GameClient:
         
         # Draw NPCs
         self.npc_spawner.draw(self.screen, int(self.camera_x), int(self.camera_y))
+        
+        # Draw items
+        for item in self.items:
+            item.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
         # Draw enemies
         for enemy in self.enemies:

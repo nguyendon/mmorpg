@@ -5,21 +5,50 @@ from pathlib import Path
 from ..common.constants import PLAYER_SIZE
 
 class Enemy:
+    # Enemy type configurations
+    ENEMY_TYPES = {
+        "goblin": {
+            "health": 50,
+            "strength": 8,
+            "defense": 3,
+            "speed": 2,
+            "attack_range": 50,
+            "aggro_range": 200,
+            "color": (150, 0, 0),  # Red
+            "exp_value": 10
+        },
+        "zombie": {
+            "health": 75,
+            "strength": 12,
+            "defense": 2,
+            "speed": 1,
+            "attack_range": 40,
+            "aggro_range": 250,
+            "color": (0, 150, 50),  # Green
+            "exp_value": 15
+        }
+    }
+
     def __init__(self, x, y, enemy_type="goblin"):
         self.x = x
         self.y = y
         self.enemy_type = enemy_type
         self.rect = pygame.Rect(x, y, PLAYER_SIZE, PLAYER_SIZE)
         
+        # Get enemy configuration
+        config = self.ENEMY_TYPES.get(enemy_type, self.ENEMY_TYPES["goblin"])
+        
         # Stats
         self.level = 1
-        self.max_health = 50
+        self.max_health = config["health"]
         self.current_health = self.max_health
-        self.strength = 8
-        self.defense = 3
-        self.attack_range = 50  # Pixels
-        self.aggro_range = 200  # Pixels
-        self.speed = 2
+        self.strength = config["strength"]
+        self.defense = config["defense"]
+        self.attack_range = config["attack_range"]
+        self.aggro_range = config["aggro_range"]
+        self.speed = config["speed"]
+        self.exp_value = config["exp_value"]
+        self.base_color = config["color"]
         
         # State
         self.is_alive = True
@@ -40,14 +69,14 @@ class Enemy:
         self.damage_numbers = []  # List of (damage, x, y, timer, color) tuples
         self.damage_number_duration = 1.0  # How long damage numbers stay on screen
         
-    def _create_enemy_sprite(self, base_color=(150, 0, 0)):
+    def _create_enemy_sprite(self):
         """Create a more detailed enemy sprite"""
         # Main body (dark red or custom color)
-        pygame.draw.rect(self.sprite, base_color, 
+        pygame.draw.rect(self.sprite, self.base_color, 
                         (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8))
         
         # Add texture/pattern
-        pattern_color = tuple(max(c - 30, 0) for c in base_color)
+        pattern_color = tuple(max(c - 30, 0) for c in self.base_color)
         for y in range(4, PLAYER_SIZE-8, 4):
             for x in range(4, PLAYER_SIZE-8, 4):
                 if (x + y) % 8 == 0:
@@ -55,7 +84,7 @@ class Enemy:
         
         # Lighter outline with gradient
         for i in range(2):
-            outline_color = tuple(min(c + 50 + i*30, 255) for c in base_color)
+            outline_color = tuple(min(c + 50 + i*30, 255) for c in self.base_color)
             pygame.draw.rect(self.sprite, outline_color, 
                            (4-i, 4-i, PLAYER_SIZE-8+i*2, PLAYER_SIZE-8+i*2), 1)
         
@@ -81,7 +110,7 @@ class Enemy:
                           (PLAYER_SIZE-14, 12, 4, 4))
         
         # Angry eyebrows with gradient
-        brow_colors = [tuple(max(c - 50 - i*20, 0) for c in base_color) for i in range(2)]
+        brow_colors = [tuple(max(c - 50 - i*20, 0) for c in self.base_color) for i in range(2)]
         for i, brow_color in enumerate(brow_colors):
             pygame.draw.line(self.sprite, brow_color, 
                            (6, 6+i), (14, 10+i), 2-i)
@@ -89,7 +118,7 @@ class Enemy:
                            (PLAYER_SIZE-6, 6+i), (PLAYER_SIZE-14, 10+i), 2-i)
         
         # Spikes on top with gradient
-        spike_colors = [tuple(min(c + 50 + i*30, 255) for c in base_color) for i in range(2)]
+        spike_colors = [tuple(min(c + 50 + i*30, 255) for c in self.base_color) for i in range(2)]
         spike_points = [
             (8, 4), (12, 0), (16, 4),
             (16, 4), (20, 0), (24, 4),
