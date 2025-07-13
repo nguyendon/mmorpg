@@ -78,75 +78,135 @@ class Enemy:
             
     def _create_zombie_sprite(self):
         """Create a zombie-specific sprite"""
-        # Zombie body (sickly green)
-        body_color = self.base_color
-        pygame.draw.rect(self.sprite, body_color,
-                        (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8))
+        size = PLAYER_SIZE
         
-        # Add decomposing texture
-        for y in range(4, PLAYER_SIZE-8, 3):
-            for x in range(4, PLAYER_SIZE-8, 3):
-                if random.random() < 0.3:  # 30% chance for dark spots
-                    spot_color = tuple(max(c - 50, 0) for c in body_color)
-                    size = random.randint(2, 4)
-                    pygame.draw.circle(self.sprite, spot_color,
-                                    (x, y), size)
+        # Base body shape (irregular and asymmetric)
+        body_color = (86, 137, 87)  # Moldy green
+        rot_color = (68, 78, 67)    # Darker rotting color
+        flesh_color = (163, 73, 73)  # Exposed flesh
         
-        # Tattered clothes (dark gray)
-        clothes_color = (40, 40, 45)
-        # Ragged shirt
+        # Draw basic body shape
         points = [
-            (8, 20), (PLAYER_SIZE-8, 20),  # Top
-            (PLAYER_SIZE-8, 35), (8, 35)   # Bottom
+            (8, 8),                  # Top left
+            (size-8, 10),            # Top right (slightly lower)
+            (size-10, size-8),       # Bottom right
+            (12, size-10)            # Bottom left
         ]
-        pygame.draw.polygon(self.sprite, clothes_color, points)
-        # Add tears in clothes
+        pygame.draw.polygon(self.sprite, body_color, points)
+        
+        # Add rotting texture and decay
+        for y in range(8, size-8, 2):
+            for x in range(8, size-8, 2):
+                if random.random() < 0.4:  # 40% chance for decay spots
+                    rot_size = random.randint(1, 4)
+                    alpha = random.randint(100, 200)
+                    decay_surface = pygame.Surface((rot_size*2, rot_size*2), pygame.SRCALPHA)
+                    pygame.draw.circle(decay_surface, (*rot_color, alpha), 
+                                    (rot_size, rot_size), rot_size)
+                    self.sprite.blit(decay_surface, (x, y))
+        
+        # Exposed bones (white/yellowish)
+        bone_color = (227, 218, 201)  # Off-white bone color
+        # Exposed rib cage on one side
+        rib_start_y = 20
+        for i in range(4):  # Draw 4 ribs
+            y = rib_start_y + i * 6
+            # Draw exposed flesh behind ribs
+            pygame.draw.ellipse(self.sprite, flesh_color,
+                              (size-25, y-1, 15, 5))
+            # Draw rib
+            pygame.draw.arc(self.sprite, bone_color,
+                          (size-22, y, 12, 4), 0, 3.14, 2)
+        
+        # Tattered clothing
+        cloth_color = (40, 40, 45, 180)  # Dark gray with transparency
+        cloth_surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        
+        # Ragged shirt
+        shirt_points = [
+            (10, 15),
+            (size-10, 18),  # Asymmetric top
+            (size-12, 35),
+            (8, 32)
+        ]
+        pygame.draw.polygon(cloth_surface, cloth_color, shirt_points)
+        
+        # Add tears and holes in clothing
+        for _ in range(5):
+            tear_x = random.randint(12, size-12)
+            tear_y = random.randint(18, 30)
+            tear_size = random.randint(3, 7)
+            pygame.draw.circle(cloth_surface, (0, 0, 0, 0),  # Transparent hole
+                             (tear_x, tear_y), tear_size)
+        
+        self.sprite.blit(cloth_surface, (0, 0))
+        
+        # Head features
+        # Sunken, asymmetric eye sockets
+        socket_color = (27, 32, 27)  # Very dark green
+        pygame.draw.ellipse(self.sprite, socket_color, (12, 12, 12, 8))  # Left socket
+        pygame.draw.ellipse(self.sprite, socket_color, (size-28, 10, 14, 9))  # Right socket
+        
+        # One glowing eye, one empty socket
+        # Glowing eye (left)
+        glow_color = (255, 238, 131, 100)  # Yellow glow
+        eye_color = (255, 238, 131)  # Solid yellow
+        pupil_color = (200, 0, 0)    # Dark red pupil
+        
+        # Create glow effect
+        glow_surface = pygame.Surface((14, 14), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surface, glow_color, (7, 7), 7)
+        self.sprite.blit(glow_surface, (11, 11))
+        
+        # Eye and pupil
+        pygame.draw.circle(self.sprite, eye_color, (16, 16), 3)
+        pygame.draw.circle(self.sprite, pupil_color, (16, 16), 1)
+        
+        # Empty socket with wound (right)
+        wound_color = (135, 44, 44)  # Dark red
+        pygame.draw.ellipse(self.sprite, wound_color, (size-25, 12, 10, 7))
+        # Add some dripping effect
+        drip_points = [(size-20, 19), (size-20, 24)]
+        pygame.draw.lines(self.sprite, wound_color, False, drip_points, 2)
+        
+        # Twisted, gaping mouth with exposed teeth
+        jaw_offset = random.randint(-2, 2)  # Random jaw misalignment
+        mouth_y = 28
+        
+        # Draw mouth cavity
+        pygame.draw.ellipse(self.sprite, (40, 20, 20), 
+                          (15, mouth_y, size-30, 8))
+        
+        # Add teeth (irregular and broken)
+        teeth_color = (227, 218, 201)  # Same as bone color
+        for x in range(16, size-16, 4):
+            if random.random() < 0.7:  # 70% chance for each tooth
+                height = random.randint(2, 5)
+                # Upper teeth
+                pygame.draw.rect(self.sprite, teeth_color,
+                               (x, mouth_y, 2, height))
+                # Lower teeth (misaligned)
+                if random.random() < 0.8:  # Some teeth missing from bottom
+                    pygame.draw.rect(self.sprite, teeth_color,
+                                   (x + jaw_offset, mouth_y + 6, 2, height))
+        
+        # Add hanging flesh/skin bits
         for _ in range(3):
-            tear_x = random.randint(10, PLAYER_SIZE-10)
-            pygame.draw.line(self.sprite, body_color,
-                           (tear_x, 20), (tear_x+4, 35), 2)
+            x = random.randint(10, size-10)
+            y = random.randint(15, size-15)
+            length = random.randint(4, 8)
+            flesh_points = [
+                (x, y),
+                (x + random.randint(-2, 2), y + length)
+            ]
+            pygame.draw.lines(self.sprite, flesh_color, False, flesh_points, 2)
         
-        # Zombie eyes (one normal, one damaged)
-        # Sunken eye sockets (dark)
-        socket_color = (20, 30, 20)
-        pygame.draw.ellipse(self.sprite, socket_color, (8, 8, 10, 12))
-        pygame.draw.ellipse(self.sprite, socket_color, (PLAYER_SIZE-18, 8, 10, 12))
-        
-        # Good eye (glowing)
-        eye_color = (255, 255, 150)  # Yellowish glow
-        pupil_color = (255, 0, 0)    # Red pupil
-        pygame.draw.ellipse(self.sprite, eye_color, (10, 10, 6, 8))
-        pygame.draw.ellipse(self.sprite, pupil_color, (11, 12, 4, 4))
-        
-        # Damaged eye (scarred)
-        scar_color = tuple(max(c - 30, 0) for c in body_color)
-        # Draw X-shaped scar
-        pygame.draw.line(self.sprite, scar_color,
-                        (PLAYER_SIZE-18, 8), (PLAYER_SIZE-8, 18), 2)
-        pygame.draw.line(self.sprite, scar_color,
-                        (PLAYER_SIZE-18, 18), (PLAYER_SIZE-8, 8), 2)
-        
-        # Mouth (jagged with exposed teeth)
-        teeth_color = (220, 217, 190)  # Off-white
-        mouth_y = 25
-        # Draw teeth
-        for x in range(10, PLAYER_SIZE-10, 4):
-            height = random.randint(3, 6)
-            pygame.draw.rect(self.sprite, teeth_color,
-                           (x, mouth_y, 2, height))
-        
-        # Exposed bones/wounds
-        wound_color = (200, 190, 180)  # Bone color
-        flesh_color = (130, 50, 50)    # Dark red flesh
-        # Random exposed bone patches
-        for _ in range(3):
-            x = random.randint(6, PLAYER_SIZE-12)
-            y = random.randint(15, PLAYER_SIZE-15)
-            size = random.randint(4, 8)
-            # Draw flesh around wound
-            pygame.draw.circle(self.sprite, flesh_color, (x, y), size+2)
-            # Draw exposed bone
-            pygame.draw.circle(self.sprite, wound_color, (x, y), size-1)
+        # Add some green drool/slime
+        slime_color = (144, 238, 144, 160)  # Light green, semi-transparent
+        slime_surface = pygame.Surface((4, 8), pygame.SRCALPHA)
+        pygame.draw.line(slime_surface, slime_color, 
+                        (2, 0), (2, 8), 3)
+        self.sprite.blit(slime_surface, (size//2-2, mouth_y + 8))
             
     def _create_goblin_sprite(self):
         """Create a goblin-specific sprite"""
