@@ -2,6 +2,7 @@ import pygame
 import sys
 from .player import Player
 from .map import GameMap
+from .ui import UI
 from ..common.constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 
 class GameClient:
@@ -19,6 +20,9 @@ class GameClient:
         player_x = SCREEN_WIDTH // 2
         player_y = SCREEN_HEIGHT // 2
         self.player = Player(player_x, player_y)
+
+        # Initialize UI
+        self.ui = UI()
 
         # Camera position
         self.camera_x = 0
@@ -68,6 +72,9 @@ class GameClient:
         
         # Draw player
         self.player.draw(self.screen, int(self.camera_x), int(self.camera_y))
+        
+        # Draw UI
+        self.ui.draw(self.screen, self.player, self.game_map)
         
         pygame.display.flip()
 

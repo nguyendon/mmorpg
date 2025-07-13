@@ -22,6 +22,14 @@ class Player:
         self.speed = PLAYER_SPEED
         self.rect = pygame.Rect(x, y, PLAYER_SIZE, PLAYER_SIZE)
         
+        # Character stats
+        self.level = 1
+        self.xp = 0
+        self.max_health = 100
+        self.current_health = self.max_health
+        self.strength = 10
+        self.defense = 5
+        
         # Animation properties
         self.sprite_manager = SpriteManager()
         self._load_sprites()
