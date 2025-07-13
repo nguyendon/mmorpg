@@ -48,23 +48,51 @@ class CharacterGenerator:
             draw = ImageDraw.Draw(img)
             
             # Body bounce offset
-            bounce = math.sin(i * math.pi / 2) * 2
+            bounce = math.sin(i * math.pi / 2) * 1
             
-            # Body
-            body_top = 12 + bounce
-            draw.rectangle([10, body_top, 22, body_top + 12], colors['body'])
+            # Draw legs with walking animation
+            leg_offset = math.sin((i + 0.5) * math.pi) * 2
+            # Left leg
+            draw.rectangle([14 - leg_offset, 22 + bounce, 17 - leg_offset, 30 + bounce], colors['pants'])
+            draw.rectangle([14 - leg_offset, 28 + bounce, 17 - leg_offset, 31 + bounce], colors['boots'])
+            # Right leg
+            draw.rectangle([15 + leg_offset, 22 + bounce, 18 + leg_offset, 30 + bounce], colors['pants'])
+            draw.rectangle([15 + leg_offset, 28 + bounce, 18 + leg_offset, 31 + bounce], colors['boots'])
+            
+            # Torso
+            draw.rectangle([13, 14 + bounce, 19, 22 + bounce], colors['shirt'])
+            # Add shading to torso
+            shade_color = self._darken_color(colors['shirt'])
+            draw.rectangle([13, 20 + bounce, 19, 22 + bounce], shade_color)
+            
+            # Arms with swing
+            arm_swing = math.sin(i * math.pi / 2) * 2
+            # Left arm
+            draw.rectangle([11 - arm_swing, 14 + bounce, 13 - arm_swing, 22 + bounce], colors['shirt'])
+            # Right arm
+            draw.rectangle([19 + arm_swing, 14 + bounce, 21 + arm_swing, 22 + bounce], colors['shirt'])
+            
+            # Belt
+            draw.rectangle([13, 21 + bounce, 19, 22 + bounce], colors['belt'])
             
             # Head
-            draw.ellipse([8, 4 + bounce, 24, 20 + bounce], colors['head'])
+            draw.ellipse([12, 6 + bounce, 20, 14 + bounce], colors['skin'])
             
-            # Eyes
-            draw.rectangle([12, 10 + bounce, 14, 12 + bounce], colors['detail'])
-            draw.rectangle([18, 10 + bounce, 20, 12 + bounce], colors['detail'])
+            # Hair (more detailed)
+            self._draw_hair_down(draw, 12, 4 + bounce, colors)
             
-            # Legs with walking animation
-            leg_offset = math.sin((i + 0.5) * math.pi) * 3
-            draw.rectangle([12, body_top + 12, 15, body_top + 20], colors['legs'])
-            draw.rectangle([17, body_top + 12, 20, body_top + 20], colors['legs'])
+            # Face details
+            eye_level = 9 + bounce
+            # Left eye
+            draw.ellipse([14, eye_level, 15, eye_level + 1], colors['eyes'])
+            # Right eye
+            draw.ellipse([17, eye_level, 18, eye_level + 1], colors['eyes'])
+            
+            # Equipment/Accessories
+            if 'cape' in colors:
+                # Cape
+                cape_sway = math.sin(i * math.pi / 2) * 1
+                draw.rectangle([14 - cape_sway, 15 + bounce, 18 - cape_sway, 24 + bounce], colors['cape'])
             
             frames_list.append(img)
         return frames_list
@@ -76,21 +104,48 @@ class CharacterGenerator:
             img = Image.new('RGBA', (self.sprite_size, self.sprite_size), (0, 0, 0, 0))
             draw = ImageDraw.Draw(img)
             
-            bounce = math.sin(i * math.pi / 2) * 2
+            bounce = math.sin(i * math.pi / 2) * 1
             
-            # Body
-            draw.rectangle([12, 12 + bounce, 24, 24 + bounce], colors['body'])
+            # Draw legs with walking animation
+            leg_offset = math.sin((i + 0.5) * math.pi) * 2
+            # Back leg
+            draw.rectangle([17 + leg_offset, 22 + bounce, 20 + leg_offset, 30 + bounce], colors['pants'])
+            draw.rectangle([17 + leg_offset, 28 + bounce, 20 + leg_offset, 31 + bounce], colors['boots'])
+            # Front leg
+            draw.rectangle([14 - leg_offset, 22 + bounce, 17 - leg_offset, 30 + bounce], colors['pants'])
+            draw.rectangle([14 - leg_offset, 28 + bounce, 17 - leg_offset, 31 + bounce], colors['boots'])
+            
+            # Torso
+            draw.rectangle([14, 14 + bounce, 20, 22 + bounce], colors['shirt'])
+            # Add shading
+            shade_color = self._darken_color(colors['shirt'])
+            draw.rectangle([18, 14 + bounce, 20, 22 + bounce], shade_color)
+            
+            # Arms with swing
+            arm_swing = math.sin(i * math.pi / 2) * 2
+            # Back arm
+            draw.rectangle([18 + arm_swing, 14 + bounce, 20 + arm_swing, 22 + bounce], colors['shirt'])
+            # Front arm
+            draw.rectangle([12 - arm_swing, 14 + bounce, 14 - arm_swing, 22 + bounce], colors['shirt'])
+            
+            # Belt
+            draw.rectangle([14, 21 + bounce, 20, 22 + bounce], colors['belt'])
             
             # Head
-            draw.ellipse([8, 4 + bounce, 20, 20 + bounce], colors['head'])
+            draw.ellipse([13, 6 + bounce, 21, 14 + bounce], colors['skin'])
             
-            # Eye
-            draw.rectangle([12, 10 + bounce, 14, 12 + bounce], colors['detail'])
+            # Hair (side view)
+            self._draw_hair_side(draw, 13, 4 + bounce, colors, facing_left=True)
             
-            # Legs with walking animation
-            leg_offset = math.sin((i + 0.5) * math.pi) * 3
-            draw.rectangle([14 + leg_offset, 24 + bounce, 17 + leg_offset, 30 + bounce], colors['legs'])
-            draw.rectangle([19 - leg_offset, 24 + bounce, 22 - leg_offset, 30 + bounce], colors['legs'])
+            # Face details (side view)
+            eye_level = 9 + bounce
+            draw.ellipse([15, eye_level, 16, eye_level + 1], colors['eyes'])
+            
+            # Equipment/Accessories
+            if 'cape' in colors:
+                # Cape with sway
+                cape_sway = math.sin(i * math.pi / 2) * 1
+                draw.rectangle([16 + cape_sway, 15 + bounce, 20 + cape_sway, 24 + bounce], colors['cape'])
             
             frames_list.append(img)
         return frames_list
@@ -111,48 +166,93 @@ class CharacterGenerator:
             img = Image.new('RGBA', (self.sprite_size, self.sprite_size), (0, 0, 0, 0))
             draw = ImageDraw.Draw(img)
             
-            bounce = math.sin(i * math.pi / 2) * 2
+            bounce = math.sin(i * math.pi / 2) * 1
             
-            # Body
-            draw.rectangle([10, 12 + bounce, 22, 24 + bounce], colors['body'])
+            # Draw legs with walking animation
+            leg_offset = math.sin((i + 0.5) * math.pi) * 2
+            # Left leg
+            draw.rectangle([14 - leg_offset, 22 + bounce, 17 - leg_offset, 30 + bounce], colors['pants'])
+            draw.rectangle([14 - leg_offset, 28 + bounce, 17 - leg_offset, 31 + bounce], colors['boots'])
+            # Right leg
+            draw.rectangle([15 + leg_offset, 22 + bounce, 18 + leg_offset, 30 + bounce], colors['pants'])
+            draw.rectangle([15 + leg_offset, 28 + bounce, 18 + leg_offset, 31 + bounce], colors['boots'])
+            
+            # Cape (behind character)
+            if 'cape' in colors:
+                cape_sway = math.sin(i * math.pi / 2) * 1
+                draw.rectangle([14 - cape_sway, 15 + bounce, 18 - cape_sway, 24 + bounce], colors['cape'])
+            
+            # Torso
+            draw.rectangle([13, 14 + bounce, 19, 22 + bounce], colors['shirt'])
+            
+            # Arms with swing
+            arm_swing = math.sin(i * math.pi / 2) * 2
+            # Left arm
+            draw.rectangle([11 - arm_swing, 14 + bounce, 13 - arm_swing, 22 + bounce], colors['shirt'])
+            # Right arm
+            draw.rectangle([19 + arm_swing, 14 + bounce, 21 + arm_swing, 22 + bounce], colors['shirt'])
+            
+            # Belt
+            draw.rectangle([13, 21 + bounce, 19, 22 + bounce], colors['belt'])
             
             # Head (from back)
-            draw.ellipse([8, 4 + bounce, 24, 20 + bounce], colors['head'])
+            draw.ellipse([12, 6 + bounce, 20, 14 + bounce], colors['skin'])
             
-            # Hair detail
-            draw.rectangle([10, 6 + bounce, 22, 12 + bounce], colors['detail'])
-            
-            # Legs with walking animation
-            leg_offset = math.sin((i + 0.5) * math.pi) * 3
-            draw.rectangle([12, 24 + bounce, 15, 30 + bounce], colors['legs'])
-            draw.rectangle([17, 24 + bounce, 20, 30 + bounce], colors['legs'])
+            # Hair (from back, more volume)
+            self._draw_hair_back(draw, 11, 4 + bounce, colors)
             
             frames_list.append(img)
         return frames_list
 
     def _create_idle_frames(self, colors, frames=4):
-        """Create idle animation frames."""
+        """Create idle animation frames with subtle breathing movement."""
         frames_list = []
         for i in range(frames):
             img = Image.new('RGBA', (self.sprite_size, self.sprite_size), (0, 0, 0, 0))
             draw = ImageDraw.Draw(img)
             
             # Subtle breathing animation
-            breath = math.sin(i * math.pi / 2) * 1
-            
-            # Body
-            draw.rectangle([10, 12 + breath, 22, 24 + breath], colors['body'])
-            
-            # Head
-            draw.ellipse([8, 4 + breath, 24, 20 + breath], colors['head'])
-            
-            # Eyes
-            draw.rectangle([12, 10 + breath, 14, 12 + breath], colors['detail'])
-            draw.rectangle([18, 10 + breath, 20, 12 + breath], colors['detail'])
+            breath = math.sin(i * math.pi / 2) * 0.5
             
             # Legs
-            draw.rectangle([12, 24 + breath, 15, 30 + breath], colors['legs'])
-            draw.rectangle([17, 24 + breath, 20, 30 + breath], colors['legs'])
+            draw.rectangle([14, 22, 17, 30], colors['pants'])
+            draw.rectangle([15, 22, 18, 30], colors['pants'])
+            draw.rectangle([14, 28, 17, 31], colors['boots'])
+            draw.rectangle([15, 28, 18, 31], colors['boots'])
+            
+            # Torso with breathing
+            draw.rectangle([13, 14 + breath, 19, 22 + breath], colors['shirt'])
+            # Shading
+            shade_color = self._darken_color(colors['shirt'])
+            draw.rectangle([13, 20 + breath, 19, 22 + breath], shade_color)
+            
+            # Arms
+            draw.rectangle([11, 14 + breath, 13, 22 + breath], colors['shirt'])
+            draw.rectangle([19, 14 + breath, 21, 22 + breath], colors['shirt'])
+            
+            # Belt
+            draw.rectangle([13, 21 + breath, 19, 22 + breath], colors['belt'])
+            
+            # Head with subtle movement
+            draw.ellipse([12, 6 + breath, 20, 14 + breath], colors['skin'])
+            
+            # Hair
+            self._draw_hair_down(draw, 12, 4 + breath, colors)
+            
+            # Face details
+            eye_level = 9 + breath
+            # Blinking animation
+            if i == 3:  # Blink on last frame
+                draw.line([14, eye_level, 15, eye_level], colors['eyes'])
+                draw.line([17, eye_level, 18, eye_level], colors['eyes'])
+            else:
+                draw.ellipse([14, eye_level, 15, eye_level + 1], colors['eyes'])
+                draw.ellipse([17, eye_level, 18, eye_level + 1], colors['eyes'])
+            
+            # Equipment/Accessories
+            if 'cape' in colors:
+                cape_sway = math.sin(i * math.pi / 4) * 0.5
+                draw.rectangle([14 - cape_sway, 15 + breath, 18 - cape_sway, 24 + breath], colors['cape'])
             
             frames_list.append(img)
         return frames_list
@@ -164,41 +264,118 @@ class CharacterGenerator:
             img = Image.new('RGBA', (self.sprite_size, self.sprite_size), (0, 0, 0, 0))
             draw = ImageDraw.Draw(img)
             
-            # Attack animation with arm swing
-            swing = math.sin(i * math.pi / 2) * 8
+            # Attack animation with dynamic pose
+            attack_angle = math.sin(i * math.pi / 2) * 30
             
-            # Body
-            draw.rectangle([10, 12, 22, 24], colors['body'])
+            # Legs in stable stance
+            draw.rectangle([14, 22, 17, 30], colors['pants'])
+            draw.rectangle([15, 22, 18, 30], colors['pants'])
+            draw.rectangle([14, 28, 17, 31], colors['boots'])
+            draw.rectangle([15, 28, 18, 31], colors['boots'])
             
-            # Head
-            draw.ellipse([8, 4, 24, 20], colors['head'])
+            # Torso with twist
+            twist = math.sin(i * math.pi / 2) * 2
+            draw.rectangle([13 + twist, 14, 19 + twist, 22], colors['shirt'])
             
-            # Eyes
-            draw.rectangle([12, 10, 14, 12], colors['detail'])
-            draw.rectangle([18, 10, 20, 12], colors['detail'])
+            # Arms with attack motion
+            arm_extend = math.sin(i * math.pi / 2) * 6
+            # Back arm
+            draw.rectangle([11 + twist, 14, 13 + twist, 22], colors['shirt'])
+            # Attack arm
+            draw.rectangle([19 + twist + arm_extend, 14, 21 + twist + arm_extend, 22], colors['shirt'])
             
-            # Legs
-            draw.rectangle([12, 24, 15, 30], colors['legs'])
-            draw.rectangle([17, 24, 20, 30], colors['legs'])
+            # Belt
+            draw.rectangle([13 + twist, 21, 19 + twist, 22], colors['belt'])
             
-            # Attacking arm
-            draw.rectangle([22 + swing, 14, 28 + swing, 17], colors['body'])
+            # Head following attack motion
+            head_turn = math.sin(i * math.pi / 2) * 2
+            draw.ellipse([12 + head_turn, 6, 20 + head_turn, 14], colors['skin'])
+            
+            # Hair with motion
+            self._draw_hair_down(draw, 12 + head_turn, 4, colors, wind=arm_extend/2)
+            
+            # Face details
+            eye_level = 9
+            # Dynamic expression during attack
+            draw.ellipse([14 + head_turn, eye_level, 15 + head_turn, eye_level + 1], colors['eyes'])
+            draw.ellipse([17 + head_turn, eye_level, 18 + head_turn, eye_level + 1], colors['eyes'])
+            
+            # Equipment/Accessories
+            if 'cape' in colors:
+                # Cape with dynamic movement
+                cape_swing = math.sin((i + 0.5) * math.pi) * 4
+                draw.rectangle([14 + cape_swing, 15, 18 + cape_swing, 24], colors['cape'])
             
             frames_list.append(img)
         return frames_list
 
+    def _draw_hair_down(self, draw, x, y, colors, wind=0):
+        """Draw detailed hairstyle from front view."""
+        # Base hair shape
+        draw.ellipse([x-1, y, x+9, y+8], colors['hair'])
+        # Bangs
+        draw.rectangle([x, y+4, x+8, y+6], colors['hair'])
+        # Side locks with wind effect
+        draw.ellipse([x-1+wind, y+2, x+2+wind, y+10], colors['hair'])
+        draw.ellipse([x+6+wind, y+2, x+9+wind, y+10], colors['hair'])
+        # Highlights
+        highlight_color = self._lighten_color(colors['hair'])
+        draw.ellipse([x+2, y+1, x+4, y+3], highlight_color)
+
+    def _draw_hair_side(self, draw, x, y, colors, facing_left=True):
+        """Draw detailed hairstyle from side view."""
+        if facing_left:
+            # Main hair mass
+            draw.ellipse([x-1, y, x+7, y+8], colors['hair'])
+            # Bangs
+            draw.rectangle([x, y+4, x+5, y+6], colors['hair'])
+            # Back flow
+            draw.ellipse([x+4, y+2, x+7, y+10], colors['hair'])
+            # Highlight
+            highlight_color = self._lighten_color(colors['hair'])
+            draw.ellipse([x+1, y+1, x+3, y+3], highlight_color)
+        else:
+            # Mirror the hair for right-facing
+            x = self.sprite_size - x - 8
+            self._draw_hair_side(draw, x, y, colors, True)
+
+    def _draw_hair_back(self, draw, x, y, colors):
+        """Draw detailed hairstyle from back view."""
+        # Full hair volume
+        draw.ellipse([x, y, x+10, y+8], colors['hair'])
+        # Lower layer
+        draw.rectangle([x+1, y+6, x+9, y+10], colors['hair'])
+        # Side volumes
+        draw.ellipse([x, y+2, x+3, y+10], colors['hair'])
+        draw.ellipse([x+7, y+2, x+10, y+10], colors['hair'])
+        # Highlight
+        highlight_color = self._lighten_color(colors['hair'])
+        draw.ellipse([x+4, y+1, x+6, y+3], highlight_color)
+
+    def _lighten_color(self, color):
+        """Create a lighter version of the color for highlights."""
+        return tuple(min(255, c + 40) for c in color[:-1]) + (color[-1],)
+
+    def _darken_color(self, color):
+        """Create a darker version of the color for shading."""
+        return tuple(max(0, c - 40) for c in color[:-1]) + (color[-1],)
+
     def generate_character(self):
-        """Generate a character spritesheet with default colors."""
+        """Generate a character spritesheet with improved colors and details."""
         colors = {
-            'body': (255, 0, 0, 255),      # Red body
-            'head': (255, 218, 185, 255),  # Peach skin
-            'detail': (0, 0, 0, 255),      # Black details
-            'legs': (0, 0, 255, 255)       # Blue legs
+            'skin': (255, 218, 185, 255),     # Peach skin tone
+            'hair': (139, 69, 19, 255),       # Brown hair
+            'shirt': (70, 130, 180, 255),     # Steel blue shirt
+            'pants': (47, 79, 79, 255),       # Dark slate gray pants
+            'boots': (101, 67, 33, 255),      # Brown boots
+            'belt': (139, 69, 19, 255),       # Brown belt
+            'eyes': (0, 0, 0, 255),           # Black eyes
+            'cape': (128, 0, 0, 255)          # Dark red cape
         }
         
         sheet = self.create_character_spritesheet(colors)
         sheet.save(self.base_path / 'player_full.png')
-        print("Generated character spritesheet!")
+        print("Generated improved character spritesheet!")
 
 if __name__ == "__main__":
     generator = CharacterGenerator()
