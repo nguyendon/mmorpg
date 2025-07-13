@@ -14,7 +14,6 @@ class Enemy:
             "speed": 2,
             "attack_range": 50,
             "aggro_range": 200,
-            "color": (150, 0, 0),  # Red
             "exp_value": 10
         },
         "zombie": {
@@ -24,7 +23,6 @@ class Enemy:
             "speed": 1,
             "attack_range": 40,
             "aggro_range": 250,
-            "color": (0, 150, 50),  # Green
             "exp_value": 15
         }
     }
@@ -48,7 +46,12 @@ class Enemy:
         self.aggro_range = config["aggro_range"]
         self.speed = config["speed"]
         self.exp_value = config["exp_value"]
-        self.base_color = config["color"]
+        
+        # Animation state
+        self.animation_frame = 0
+        self.animation_timer = 0
+        self.animation_speed = 0.2  # Seconds per frame
+        self.facing_left = False
         
         # State
         self.is_alive = True
@@ -61,212 +64,94 @@ class Enemy:
         self.knockback_distance = 0
         self.knockback_direction = (0, 0)
         
-        # Create sprite
-        self.sprite = pygame.Surface((PLAYER_SIZE, PLAYER_SIZE), pygame.SRCALPHA)
-        self._create_enemy_sprite()  # Default color will be used
+        # Load sprite sheet
+        self.sprites = {}
+        self._load_sprites()
         
         # Combat text
         self.damage_numbers = []  # List of (damage, x, y, timer, color) tuples
         self.damage_number_duration = 1.0  # How long damage numbers stay on screen
         
-    def _create_enemy_sprite(self):
-        """Create a detailed enemy sprite based on type"""
+    def _load_sprites(self):
+        """Load the appropriate sprite sheet based on enemy type"""
         if self.enemy_type == "zombie":
-            self._create_zombie_sprite()
-        else:  # goblin or default
-            self._create_goblin_sprite()
+            self._load_zombie_sprites()
+        else:
+            self._load_goblin_sprites()
             
-    def _create_zombie_sprite(self):
-        """Create a zombie-specific sprite"""
-        size = PLAYER_SIZE
-        
-        # Base body shape (irregular and asymmetric)
-        body_color = (86, 137, 87)  # Moldy green
-        rot_color = (68, 78, 67)    # Darker rotting color
-        flesh_color = (163, 73, 73)  # Exposed flesh
-        
-        # Draw basic body shape
-        points = [
-            (8, 8),                  # Top left
-            (size-8, 10),            # Top right (slightly lower)
-            (size-10, size-8),       # Bottom right
-            (12, size-10)            # Bottom left
-        ]
-        pygame.draw.polygon(self.sprite, body_color, points)
-        
-        # Add rotting texture and decay
-        for y in range(8, size-8, 2):
-            for x in range(8, size-8, 2):
-                if random.random() < 0.4:  # 40% chance for decay spots
-                    rot_size = random.randint(1, 4)
-                    alpha = random.randint(100, 200)
-                    decay_surface = pygame.Surface((rot_size*2, rot_size*2), pygame.SRCALPHA)
-                    pygame.draw.circle(decay_surface, (*rot_color, alpha), 
-                                    (rot_size, rot_size), rot_size)
-                    self.sprite.blit(decay_surface, (x, y))
-        
-        # Exposed bones (white/yellowish)
-        bone_color = (227, 218, 201)  # Off-white bone color
-        # Exposed rib cage on one side
-        rib_start_y = 20
-        for i in range(4):  # Draw 4 ribs
-            y = rib_start_y + i * 6
-            # Draw exposed flesh behind ribs
-            pygame.draw.ellipse(self.sprite, flesh_color,
-                              (size-25, y-1, 15, 5))
-            # Draw rib
-            pygame.draw.arc(self.sprite, bone_color,
-                          (size-22, y, 12, 4), 0, 3.14, 2)
-        
-        # Tattered clothing
-        cloth_color = (40, 40, 45, 180)  # Dark gray with transparency
-        cloth_surface = pygame.Surface((size, size), pygame.SRCALPHA)
-        
-        # Ragged shirt
-        shirt_points = [
-            (10, 15),
-            (size-10, 18),  # Asymmetric top
-            (size-12, 35),
-            (8, 32)
-        ]
-        pygame.draw.polygon(cloth_surface, cloth_color, shirt_points)
-        
-        # Add tears and holes in clothing
-        for _ in range(5):
-            tear_x = random.randint(12, size-12)
-            tear_y = random.randint(18, 30)
-            tear_size = random.randint(3, 7)
-            pygame.draw.circle(cloth_surface, (0, 0, 0, 0),  # Transparent hole
-                             (tear_x, tear_y), tear_size)
-        
-        self.sprite.blit(cloth_surface, (0, 0))
-        
-        # Head features
-        # Sunken, asymmetric eye sockets
-        socket_color = (27, 32, 27)  # Very dark green
-        pygame.draw.ellipse(self.sprite, socket_color, (12, 12, 12, 8))  # Left socket
-        pygame.draw.ellipse(self.sprite, socket_color, (size-28, 10, 14, 9))  # Right socket
-        
-        # One glowing eye, one empty socket
-        # Glowing eye (left)
-        glow_color = (255, 238, 131, 100)  # Yellow glow
-        eye_color = (255, 238, 131)  # Solid yellow
-        pupil_color = (200, 0, 0)    # Dark red pupil
-        
-        # Create glow effect
-        glow_surface = pygame.Surface((14, 14), pygame.SRCALPHA)
-        pygame.draw.circle(glow_surface, glow_color, (7, 7), 7)
-        self.sprite.blit(glow_surface, (11, 11))
-        
-        # Eye and pupil
-        pygame.draw.circle(self.sprite, eye_color, (16, 16), 3)
-        pygame.draw.circle(self.sprite, pupil_color, (16, 16), 1)
-        
-        # Empty socket with wound (right)
-        wound_color = (135, 44, 44)  # Dark red
-        pygame.draw.ellipse(self.sprite, wound_color, (size-25, 12, 10, 7))
-        # Add some dripping effect
-        drip_points = [(size-20, 19), (size-20, 24)]
-        pygame.draw.lines(self.sprite, wound_color, False, drip_points, 2)
-        
-        # Twisted, gaping mouth with exposed teeth
-        jaw_offset = random.randint(-2, 2)  # Random jaw misalignment
-        mouth_y = 28
-        
-        # Draw mouth cavity
-        pygame.draw.ellipse(self.sprite, (40, 20, 20), 
-                          (15, mouth_y, size-30, 8))
-        
-        # Add teeth (irregular and broken)
-        teeth_color = (227, 218, 201)  # Same as bone color
-        for x in range(16, size-16, 4):
-            if random.random() < 0.7:  # 70% chance for each tooth
-                height = random.randint(2, 5)
-                # Upper teeth
-                pygame.draw.rect(self.sprite, teeth_color,
-                               (x, mouth_y, 2, height))
-                # Lower teeth (misaligned)
-                if random.random() < 0.8:  # Some teeth missing from bottom
-                    pygame.draw.rect(self.sprite, teeth_color,
-                                   (x + jaw_offset, mouth_y + 6, 2, height))
-        
-        # Add hanging flesh/skin bits
-        for _ in range(3):
-            x = random.randint(10, size-10)
-            y = random.randint(15, size-15)
-            length = random.randint(4, 8)
-            flesh_points = [
-                (x, y),
-                (x + random.randint(-2, 2), y + length)
-            ]
-            pygame.draw.lines(self.sprite, flesh_color, False, flesh_points, 2)
-        
-        # Add some green drool/slime
-        slime_color = (144, 238, 144, 160)  # Light green, semi-transparent
-        slime_surface = pygame.Surface((4, 8), pygame.SRCALPHA)
-        pygame.draw.line(slime_surface, slime_color, 
-                        (2, 0), (2, 8), 3)
-        self.sprite.blit(slime_surface, (size//2-2, mouth_y + 8))
+    def _load_zombie_sprites(self):
+        """Load zombie sprite sheet and extract animation frames"""
+        # Load the sprite sheet
+        try:
+            sprite_sheet = pygame.image.load("src/assets/images/enemies/zombie.png").convert_alpha()
             
-    def _create_goblin_sprite(self):
-        """Create a goblin-specific sprite"""
+            # Define frame positions (each frame is 32x32 pixels)
+            frame_width = 32
+            frame_height = 32
+            
+            # Extract walking animation frames (first row)
+            self.sprites['walk'] = []
+            for i in range(3):  # 3 frames of walking animation
+                frame = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+                frame.blit(sprite_sheet, (0, 0), (i * frame_width, 0, frame_width, frame_height))
+                # Scale up the frame to match player size
+                frame = pygame.transform.scale(frame, (PLAYER_SIZE, PLAYER_SIZE))
+                self.sprites['walk'].append(frame)
+                
+            # Extract attack animation frames (second row)
+            self.sprites['attack'] = []
+            for i in range(2):  # 2 frames of attack animation
+                frame = pygame.Surface((frame_width, frame_height), pygame.SRCALPHA)
+                frame.blit(sprite_sheet, (0, 0), (i * frame_width, frame_height, frame_width, frame_height))
+                # Scale up the frame to match player size
+                frame = pygame.transform.scale(frame, (PLAYER_SIZE, PLAYER_SIZE))
+                self.sprites['attack'].append(frame)
+                
+        except pygame.error as e:
+            print(f"Error loading zombie sprites: {e}")
+            # Fallback to basic rectangle if sprite loading fails
+            self.sprites['walk'] = [self._create_basic_sprite()]
+            self.sprites['attack'] = [self._create_basic_sprite()]
+            
+    def _load_goblin_sprites(self):
+        """Create basic goblin sprite"""
+        sprite = pygame.Surface((PLAYER_SIZE, PLAYER_SIZE), pygame.SRCALPHA)
+        
         # Main body
-        pygame.draw.rect(self.sprite, self.base_color, 
+        pygame.draw.rect(sprite, (150, 0, 0), 
                         (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8))
         
         # Add texture/pattern
-        pattern_color = tuple(max(c - 30, 0) for c in self.base_color)
+        pattern_color = (120, 0, 0)
         for y in range(4, PLAYER_SIZE-8, 4):
             for x in range(4, PLAYER_SIZE-8, 4):
                 if (x + y) % 8 == 0:
-                    pygame.draw.rect(self.sprite, pattern_color, (x, y, 2, 2))
+                    pygame.draw.rect(sprite, pattern_color, (x, y, 2, 2))
         
-        # Lighter outline with gradient
-        for i in range(2):
-            outline_color = tuple(min(c + 50 + i*30, 255) for c in self.base_color)
-            pygame.draw.rect(self.sprite, outline_color, 
-                           (4-i, 4-i, PLAYER_SIZE-8+i*2, PLAYER_SIZE-8+i*2), 1)
-        
-        # Eyes (glowing effect)
-        eye_color = (255, 255, 200)  # Slightly yellow tint
-        pupil_color = (255, 0, 0)    # Red pupils
-        glow_color = (255, 255, 100, 100)  # Semi-transparent glow
-        
-        # Create glow effect
-        glow_surface = pygame.Surface((12, 16), pygame.SRCALPHA)
-        pygame.draw.ellipse(glow_surface, glow_color, (0, 0, 12, 16))
+        # Eyes
+        eye_color = (255, 255, 200)
+        pupil_color = (255, 0, 0)
         
         # Left eye
-        self.sprite.blit(glow_surface, (6, 6))
-        pygame.draw.ellipse(self.sprite, eye_color, (8, 8, 8, 12))
-        pygame.draw.ellipse(self.sprite, pupil_color, (10, 12, 4, 4))
+        pygame.draw.ellipse(sprite, eye_color, (8, 8, 8, 12))
+        pygame.draw.ellipse(sprite, pupil_color, (10, 12, 4, 4))
         
         # Right eye
-        self.sprite.blit(glow_surface, (PLAYER_SIZE-18, 6))
-        pygame.draw.ellipse(self.sprite, eye_color, 
+        pygame.draw.ellipse(sprite, eye_color, 
                           (PLAYER_SIZE-16, 8, 8, 12))
-        pygame.draw.ellipse(self.sprite, pupil_color, 
+        pygame.draw.ellipse(sprite, pupil_color, 
                           (PLAYER_SIZE-14, 12, 4, 4))
         
-        # Angry eyebrows with gradient
-        brow_colors = [tuple(max(c - 50 - i*20, 0) for c in self.base_color) for i in range(2)]
-        for i, brow_color in enumerate(brow_colors):
-            pygame.draw.line(self.sprite, brow_color, 
-                           (6, 6+i), (14, 10+i), 2-i)
-            pygame.draw.line(self.sprite, brow_color, 
-                           (PLAYER_SIZE-6, 6+i), (PLAYER_SIZE-14, 10+i), 2-i)
+        # Store the sprite for both walk and attack animations
+        self.sprites['walk'] = [sprite]
+        self.sprites['attack'] = [sprite]
         
-        # Spikes on top with gradient
-        spike_colors = [tuple(min(c + 50 + i*30, 255) for c in self.base_color) for i in range(2)]
-        spike_points = [
-            (8, 4), (12, 0), (16, 4),
-            (16, 4), (20, 0), (24, 4),
-            (24, 4), (28, 0), (32, 4)
-        ]
-        for i, spike_color in enumerate(spike_colors):
-            offset = i
-            adjusted_points = [(x, y+offset) for x, y in spike_points]
-            pygame.draw.lines(self.sprite, spike_color, False, adjusted_points, 2-i)
+    def _create_basic_sprite(self):
+        """Create a basic rectangular sprite as fallback"""
+        sprite = pygame.Surface((PLAYER_SIZE, PLAYER_SIZE), pygame.SRCALPHA)
+        pygame.draw.rect(sprite, (255, 0, 0), 
+                        (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8))
+        return sprite
         
     def update(self, dt, player, game_map):
         """Update enemy state"""
@@ -304,6 +189,9 @@ class Enemy:
             
             # If player is in aggro range, move toward them
             if dist_to_player < self.aggro_range:
+                # Update facing direction
+                self.facing_left = player.x < self.x
+                
                 if dist_to_player > self.attack_range:  # Only move if not in attack range
                     # Calculate direction to player
                     dx = player.x - self.x
@@ -323,6 +211,12 @@ class Enemy:
                             self.y = new_y
                             self.rect.x = new_x
                             self.rect.y = new_y
+                            
+                            # Update animation
+                            self.animation_timer += dt
+                            if self.animation_timer >= self.animation_speed:
+                                self.animation_timer = 0
+                                self.animation_frame = (self.animation_frame + 1) % len(self.sprites['walk'])
                 
                 # Attack if in range and cooldown is ready
                 if dist_to_player <= self.attack_range and self.attack_timer <= 0:
@@ -408,13 +302,21 @@ class Enemy:
             screen_y + PLAYER_SIZE - shadow_height/2
         ))
         
+        # Get current sprite based on state
+        sprite_list = self.sprites['attack'] if self.is_attacking else self.sprites['walk']
+        current_sprite = sprite_list[self.animation_frame % len(sprite_list)]
+        
+        # Flip sprite if facing left
+        if self.facing_left:
+            current_sprite = pygame.transform.flip(current_sprite, True, False)
+        
         # Flash white when hit
         if self.is_hit:
-            white_sprite = self.sprite.copy()
+            white_sprite = current_sprite.copy()
             white_sprite.fill((255, 255, 255, 180), special_flags=pygame.BLEND_RGBA_MULT)
             screen.blit(white_sprite, (screen_x, screen_y))
         else:
-            screen.blit(self.sprite, (screen_x, screen_y))
+            screen.blit(current_sprite, (screen_x, screen_y))
             
         # Draw health bar with improved visuals
         health_pct = self.current_health / self.max_health
@@ -479,14 +381,3 @@ class Enemy:
                 screen.blit(outline, (text_x + dx, text_y + dy))
             text.set_alpha(alpha)
             screen.blit(text, (text_x, text_y))
-            
-        # Draw attack indicator when enemy is attacking
-        if self.is_attacking:
-            attack_radius = self.attack_range
-            attack_surface = pygame.Surface((attack_radius*2, attack_radius*2), pygame.SRCALPHA)
-            pygame.draw.circle(attack_surface, (255, 0, 0, 50), 
-                             (attack_radius, attack_radius), attack_radius)
-            screen.blit(attack_surface, (
-                screen_x + PLAYER_SIZE/2 - attack_radius,
-                screen_y + PLAYER_SIZE/2 - attack_radius
-            ))
