@@ -430,26 +430,28 @@ class Player:
         self.is_attacking = False
         self.state = AnimationState.IDLE
             
-        # Apply defense reduction
-        actual_damage = max(1, damage - self.defense)
+        # Apply defense reduction with some randomness
+        defense_multiplier = random.uniform(0.8, 1.2)  # +/- 20% defense variation
+        actual_damage = max(1, int(damage - self.defense * defense_multiplier))
         self.current_health -= actual_damage
         
-        # Add damage number (always white for damage taken)
+        # Add damage number with enhanced visibility
         self.damage_numbers.append((
             actual_damage,
             self.x + random.randint(-10, 10),
             self.y - 20,
             self.damage_number_duration,
-            DamageType.NORMAL.value
+            (255, 50, 50)  # Red color for damage taken
         ))
         
-        # Apply knockback
+        # Apply knockback with increased effect when health is low
         if knockback_direction:
-            self.knockback_distance = 30
+            health_factor = 1 + (1 - self.current_health / self.max_health)  # Up to 2x at low health
+            self.knockback_distance = 30 * health_factor
             self.knockback_direction = knockback_direction
         
         self.is_hit = True
-        self.hit_timer = self.hit_cooldown
+        self.hit_timer = self.hit_cooldown * 0.75  # Reduced invulnerability time
         
         # Check if dead
         if self.current_health <= 0:
@@ -487,10 +489,20 @@ class Player:
             sprite_row * 4 + self.animation_frame)
         
         if sprite:
+            # Draw player shadow
+            shadow_height = 4
+            shadow_surface = pygame.Surface((PLAYER_SIZE, shadow_height), pygame.SRCALPHA)
+            pygame.draw.ellipse(shadow_surface, (0, 0, 0, 128), 
+                              (0, 0, PLAYER_SIZE, shadow_height))
+            screen.blit(shadow_surface, (
+                self.rect.x - camera_x,
+                self.rect.y + PLAYER_SIZE - shadow_height/2 - camera_y
+            ))
+            
             # Flash white when hit
             if self.is_hit:
                 white_sprite = sprite.copy()
-                white_sprite.fill((255, 255, 255), special_flags=pygame.BLEND_ADD)
+                white_sprite.fill((255, 255, 255, 180), special_flags=pygame.BLEND_RGBA_MULT)
                 screen.blit(white_sprite, (
                     self.rect.x - camera_x,
                     self.rect.y - camera_y
@@ -500,26 +512,85 @@ class Player:
                     self.rect.x - camera_x,
                     self.rect.y - camera_y
                 ))
+            
+            # Draw health bar
+            health_pct = self.current_health / self.max_health
+            bar_width = self.rect.width
+            bar_height = 5
+            bar_x = self.rect.x - camera_x
+            bar_y = self.rect.y - 10 - camera_y
+            
+            # Background (dark gray)
+            pygame.draw.rect(screen, (64, 64, 64),
+                           (bar_x, bar_y, bar_width, bar_height))
+            # Health (green gradient based on health percentage)
+            if health_pct > 0:
+                green = int(255 * health_pct)
+                red = int(255 * (1 - health_pct))
+                health_color = (red, green, 0)
+                pygame.draw.rect(screen, health_color,
+                               (bar_x, bar_y, bar_width * health_pct, bar_height))
+                # Add highlight
+                highlight_height = max(1, int(bar_height * 0.3))
+                pygame.draw.rect(screen, (min(red + 50, 255), min(green + 50, 255), 50),
+                               (bar_x, bar_y, bar_width * health_pct, highlight_height))
                 
-            # Draw damage numbers with colors
-            font = pygame.font.Font(None, 20)
+            # Draw damage numbers with colors and effects
+            font = pygame.font.Font(None, 24)  # Slightly larger font
             for damage, x, y, timer, color in self.damage_numbers:
-                # Float up and fade out
-                y_offset = (self.damage_number_duration - timer) * 30
-                alpha = int(255 * (timer / self.damage_number_duration))
+                # Float up and fade out with bounce effect
+                progress = (self.damage_number_duration - timer) / self.damage_number_duration
+                y_offset = -30 * progress  # Base upward movement
                 
+                # Add bounce effect
+                bounce = math.sin(progress * math.pi * 2) * 5 * (1 - progress)
+                y_offset += bounce
+                
+                # Scale based on damage (bigger numbers = bigger text)
+                scale = min(1.5, 1 + damage / 50)  # Max 1.5x size for big hits
+                
+                # Fade out
+                alpha = int(255 * (1 - progress))
+                
+                # Render with outline for better visibility
                 text = font.render(str(damage), True, color)
+                text = pygame.transform.scale(text, 
+                    (int(text.get_width() * scale), 
+                     int(text.get_height() * scale)))
+                
+                # Create outline
+                outline = font.render(str(damage), True, (0, 0, 0))
+                outline = pygame.transform.scale(outline, 
+                    (int(outline.get_width() * scale), 
+                     int(outline.get_height() * scale)))
+                
+                # Position for centered text
+                text_x = x - text.get_width()/2 - camera_x
+                text_y = y + y_offset - text.get_height()/2 - camera_y
+                
+                # Draw outline then text
+                for dx, dy in [(-1,-1), (-1,1), (1,-1), (1,1)]:
+                    outline.set_alpha(alpha)
+                    screen.blit(outline, (text_x + dx, text_y + dy))
                 text.set_alpha(alpha)
-                screen.blit(text, (x - camera_x, y - y_offset - camera_y))
+                screen.blit(text, (text_x, text_y))
                 
             # Debug: draw attack hitbox when attacking
-            if self.is_attacking:
+            if self.is_attacking and self.current_attack:
                 hitbox = self._get_attack_hitbox()
-                pygame.draw.rect(screen, (255, 0, 0), 
-                               (hitbox.x - camera_x,
-                                hitbox.y - camera_y,
-                                hitbox.width,
-                                hitbox.height), 1)
+                # Draw attack effect
+                attack_surface = pygame.Surface((hitbox.width, hitbox.height), pygame.SRCALPHA)
+                if self.current_attack == AttackType.SLASH:
+                    pygame.draw.rect(attack_surface, (255, 255, 255, 50), 
+                                   (0, 0, hitbox.width, hitbox.height))
+                elif self.current_attack == AttackType.SPIN:
+                    pygame.draw.circle(attack_surface, (255, 255, 0, 50),
+                                    (hitbox.width/2, hitbox.height/2),
+                                    max(hitbox.width, hitbox.height)/2)
+                elif self.current_attack == AttackType.WAVE:
+                    pygame.draw.rect(attack_surface, (0, 255, 255, 50),
+                                   (0, 0, hitbox.width, hitbox.height))
+                screen.blit(attack_surface, (hitbox.x - camera_x, hitbox.y - camera_y))
         else:
             # Fallback to rectangle if sprite loading failed
             draw_rect = pygame.Rect(

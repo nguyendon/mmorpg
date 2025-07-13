@@ -40,48 +40,65 @@ class Enemy:
         self.damage_numbers = []  # List of (damage, x, y, timer, color) tuples
         self.damage_number_duration = 1.0  # How long damage numbers stay on screen
         
-    def _create_enemy_sprite(self, color=(150, 0, 0)):
+    def _create_enemy_sprite(self, base_color=(150, 0, 0)):
         """Create a more detailed enemy sprite"""
         # Main body (dark red or custom color)
-        pygame.draw.rect(self.sprite, color, 
+        pygame.draw.rect(self.sprite, base_color, 
                         (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8))
         
-        # Lighter outline (brighten the base color)
-        outline_color = tuple(min(c + 50, 255) for c in color)
-        pygame.draw.rect(self.sprite, outline_color, 
-                        (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8), 2)
+        # Add texture/pattern
+        pattern_color = tuple(max(c - 30, 0) for c in base_color)
+        for y in range(4, PLAYER_SIZE-8, 4):
+            for x in range(4, PLAYER_SIZE-8, 4):
+                if (x + y) % 8 == 0:
+                    pygame.draw.rect(self.sprite, pattern_color, (x, y, 2, 2))
         
-        # Eyes (white with black pupils)
-        eye_color = (255, 255, 255)
-        pupil_color = (0, 0, 0)
+        # Lighter outline with gradient
+        for i in range(2):
+            outline_color = tuple(min(c + 50 + i*30, 255) for c in base_color)
+            pygame.draw.rect(self.sprite, outline_color, 
+                           (4-i, 4-i, PLAYER_SIZE-8+i*2, PLAYER_SIZE-8+i*2), 1)
+        
+        # Eyes (glowing effect)
+        eye_color = (255, 255, 200)  # Slightly yellow tint
+        pupil_color = (255, 0, 0)    # Red pupils
+        glow_color = (255, 255, 100, 100)  # Semi-transparent glow
+        
+        # Create glow effect
+        glow_surface = pygame.Surface((12, 16), pygame.SRCALPHA)
+        pygame.draw.ellipse(glow_surface, glow_color, (0, 0, 12, 16))
         
         # Left eye
-        pygame.draw.ellipse(self.sprite, eye_color, 
-                          (8, 8, 8, 12))
-        pygame.draw.ellipse(self.sprite, pupil_color, 
-                          (10, 12, 4, 4))
+        self.sprite.blit(glow_surface, (6, 6))
+        pygame.draw.ellipse(self.sprite, eye_color, (8, 8, 8, 12))
+        pygame.draw.ellipse(self.sprite, pupil_color, (10, 12, 4, 4))
         
         # Right eye
+        self.sprite.blit(glow_surface, (PLAYER_SIZE-18, 6))
         pygame.draw.ellipse(self.sprite, eye_color, 
                           (PLAYER_SIZE-16, 8, 8, 12))
         pygame.draw.ellipse(self.sprite, pupil_color, 
                           (PLAYER_SIZE-14, 12, 4, 4))
         
-        # Angry eyebrows
-        brow_color = tuple(max(c - 50, 0) for c in color)  # Darker than base color
-        pygame.draw.line(self.sprite, brow_color, 
-                        (6, 6), (14, 10), 2)
-        pygame.draw.line(self.sprite, brow_color, 
-                        (PLAYER_SIZE-6, 6), (PLAYER_SIZE-14, 10), 2)
+        # Angry eyebrows with gradient
+        brow_colors = [tuple(max(c - 50 - i*20, 0) for c in base_color) for i in range(2)]
+        for i, brow_color in enumerate(brow_colors):
+            pygame.draw.line(self.sprite, brow_color, 
+                           (6, 6+i), (14, 10+i), 2-i)
+            pygame.draw.line(self.sprite, brow_color, 
+                           (PLAYER_SIZE-6, 6+i), (PLAYER_SIZE-14, 10+i), 2-i)
         
-        # Spikes on top
-        spike_color = outline_color
+        # Spikes on top with gradient
+        spike_colors = [tuple(min(c + 50 + i*30, 255) for c in base_color) for i in range(2)]
         spike_points = [
             (8, 4), (12, 0), (16, 4),
             (16, 4), (20, 0), (24, 4),
             (24, 4), (28, 0), (32, 4)
         ]
-        pygame.draw.lines(self.sprite, spike_color, False, spike_points, 2)
+        for i, spike_color in enumerate(spike_colors):
+            offset = i
+            adjusted_points = [(x, y+offset) for x, y in spike_points]
+            pygame.draw.lines(self.sprite, spike_color, False, adjusted_points, 2-i)
         
     def update(self, dt, player, game_map):
         """Update enemy state"""
@@ -181,20 +198,29 @@ class Enemy:
             
     def attack(self, player):
         """Attack the player"""
+        # Check if player is in attack range
+        dx = player.x - self.x
+        dy = player.y - self.y
+        distance = math.sqrt(dx**2 + dy**2)
+        
+        if distance > self.attack_range:
+            return
+            
         self.is_attacking = True
         self.attack_timer = self.attack_cooldown
         
         # Calculate knockback direction
-        dx = player.x - self.x
-        dy = player.y - self.y
-        length = math.sqrt(dx**2 + dy**2)
-        if length > 0:
-            knockback_direction = (dx/length, dy/length)
+        if distance > 0:
+            knockback_direction = (dx/distance, dy/distance)
         else:
             knockback_direction = (1, 0)
             
         # Deal damage to player
-        player.take_damage(self.strength, knockback_direction)
+        damage = random.randint(
+            int(self.strength * 0.8),
+            int(self.strength * 1.2)
+        )  # Add some randomness
+        player.take_damage(damage, knockback_direction)
     
     def draw(self, screen, camera_x=0, camera_y=0):
         """Draw the enemy"""
@@ -204,35 +230,95 @@ class Enemy:
         screen_x = self.rect.x - camera_x
         screen_y = self.rect.y - camera_y
         
+        # Draw shadow
+        shadow_height = 4
+        shadow_surface = pygame.Surface((PLAYER_SIZE, shadow_height), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_surface, (0, 0, 0, 128), 
+                          (0, 0, PLAYER_SIZE, shadow_height))
+        screen.blit(shadow_surface, (
+            screen_x,
+            screen_y + PLAYER_SIZE - shadow_height/2
+        ))
+        
         # Flash white when hit
         if self.is_hit:
             white_sprite = self.sprite.copy()
-            white_sprite.fill((255, 255, 255))
+            white_sprite.fill((255, 255, 255, 180), special_flags=pygame.BLEND_RGBA_MULT)
             screen.blit(white_sprite, (screen_x, screen_y))
         else:
             screen.blit(self.sprite, (screen_x, screen_y))
             
-        # Draw health bar
+        # Draw health bar with improved visuals
         health_pct = self.current_health / self.max_health
         bar_width = self.rect.width
         bar_height = 5
         bar_x = screen_x
         bar_y = screen_y - 10
         
-        # Background (gray)
-        pygame.draw.rect(screen, (128, 128, 128),
+        # Background (dark gray)
+        pygame.draw.rect(screen, (64, 64, 64),
                         (bar_x, bar_y, bar_width, bar_height))
-        # Health (red for enemies)
-        pygame.draw.rect(screen, (255, 0, 0),
-                        (bar_x, bar_y, bar_width * health_pct, bar_height))
-                        
-        # Draw damage numbers with colors
-        font = pygame.font.Font(None, 20)
-        for damage, x, y, timer, color in self.damage_numbers:
-            # Float up and fade out
-            y_offset = (self.damage_number_duration - timer) * 30
-            alpha = int(255 * (timer / self.damage_number_duration))
+        
+        # Health (red gradient based on health percentage)
+        if health_pct > 0:
+            red = 255
+            green = int(255 * health_pct * 0.5)  # Less green for a more aggressive look
+            health_color = (red, green, 0)
+            pygame.draw.rect(screen, health_color,
+                           (bar_x, bar_y, bar_width * health_pct, bar_height))
             
+            # Add highlight
+            highlight_height = max(1, int(bar_height * 0.3))
+            pygame.draw.rect(screen, (min(red + 50, 255), min(green + 50, 255), 50),
+                           (bar_x, bar_y, bar_width * health_pct, highlight_height))
+                        
+        # Draw damage numbers with improved visuals
+        font = pygame.font.Font(None, 24)
+        for damage, x, y, timer, color in self.damage_numbers:
+            # Float up and fade out with bounce effect
+            progress = (self.damage_number_duration - timer) / self.damage_number_duration
+            y_offset = -30 * progress  # Base upward movement
+            
+            # Add bounce effect
+            bounce = math.sin(progress * math.pi * 2) * 5 * (1 - progress)
+            y_offset += bounce
+            
+            # Scale based on damage
+            scale = min(1.5, 1 + damage / 50)  # Max 1.5x size for big hits
+            
+            # Fade out
+            alpha = int(255 * (1 - progress))
+            
+            # Render with outline for better visibility
             text = font.render(str(damage), True, color)
+            text = pygame.transform.scale(text, 
+                (int(text.get_width() * scale), 
+                 int(text.get_height() * scale)))
+            
+            # Create outline
+            outline = font.render(str(damage), True, (0, 0, 0))
+            outline = pygame.transform.scale(outline, 
+                (int(outline.get_width() * scale), 
+                 int(outline.get_height() * scale)))
+            
+            # Position for centered text
+            text_x = x - text.get_width()/2 - camera_x
+            text_y = y + y_offset - text.get_height()/2 - camera_y
+            
+            # Draw outline then text
+            for dx, dy in [(-1,-1), (-1,1), (1,-1), (1,1)]:
+                outline.set_alpha(alpha)
+                screen.blit(outline, (text_x + dx, text_y + dy))
             text.set_alpha(alpha)
-            screen.blit(text, (x - camera_x, y - y_offset - camera_y))
+            screen.blit(text, (text_x, text_y))
+            
+        # Draw attack indicator when enemy is attacking
+        if self.is_attacking:
+            attack_radius = self.attack_range
+            attack_surface = pygame.Surface((attack_radius*2, attack_radius*2), pygame.SRCALPHA)
+            pygame.draw.circle(attack_surface, (255, 0, 0, 50), 
+                             (attack_radius, attack_radius), attack_radius)
+            screen.blit(attack_surface, (
+                screen_x + PLAYER_SIZE/2 - attack_radius,
+                screen_y + PLAYER_SIZE/2 - attack_radius
+            ))
