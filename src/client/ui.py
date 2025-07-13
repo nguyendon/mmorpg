@@ -103,8 +103,8 @@ class UI:
 
     def draw(self, screen, player, game_map):
         """Draw all UI elements"""
-        # Draw health bar (assuming max health of 100 for now)
-        self.draw_health_bar(screen, 100, 100)
+        # Draw health bar using player's actual health values
+        self.draw_health_bar(screen, player.current_health, player.max_health)
         
         # Draw minimap
         self.draw_minimap(screen, game_map, (player.x, player.y))
