@@ -1,6 +1,7 @@
 import pygame
 import sys
 from .player import Player
+from .map import GameMap
 from ..common.constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 
 class GameClient:
@@ -11,10 +12,17 @@ class GameClient:
         self.clock = pygame.time.Clock()
         self.running = True
         
+        # Create game map (30x30 tiles)
+        self.game_map = GameMap(30, 30)
+        
         # Create player at center of screen
         player_x = SCREEN_WIDTH // 2
         player_y = SCREEN_HEIGHT // 2
         self.player = Player(player_x, player_y)
+
+        # Camera position
+        self.camera_x = 0
+        self.camera_y = 0
 
         # Set up basic colors
         self.colors = {
@@ -33,18 +41,27 @@ class GameClient:
 
     def update(self):
         # Handle player input and movement
-        self.player.handle_input()
+        self.player.handle_input(self.game_map)
+        
+        # Update camera to follow player
+        self.camera_x = self.player.x - SCREEN_WIDTH // 2
+        self.camera_y = self.player.y - SCREEN_HEIGHT // 2
+        
+        # Keep camera within map bounds
+        self.camera_x = max(0, min(self.camera_x, 
+                                 self.game_map.width * self.game_map.tile_size - SCREEN_WIDTH))
+        self.camera_y = max(0, min(self.camera_y, 
+                                 self.game_map.height * self.game_map.tile_size - SCREEN_HEIGHT))
 
     def render(self):
         # Fill background
-        self.screen.fill(self.colors['GRAY'])
+        self.screen.fill(self.colors['BLACK'])
         
-        # Draw game world elements here
+        # Draw game map
+        self.game_map.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
         # Draw player
-        self.player.draw(self.screen)
-        
-        # Draw UI elements here
+        self.player.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
         pygame.display.flip()
 

@@ -1,5 +1,4 @@
 import pygame
-import sys
 from ..common.constants import PLAYER_SPEED, PLAYER_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT
 
 class Player:
@@ -11,21 +10,21 @@ class Player:
         self.rect = pygame.Rect(x, y, PLAYER_SIZE, PLAYER_SIZE)
         self.color = (255, 0, 0)  # Red color for visibility
 
-    def move(self, dx, dy):
-        """Move the player by the given delta x and y."""
+    def move(self, dx, dy, game_map):
+        """Move the player by the given delta x and y, considering map collisions."""
         new_x = self.x + (dx * self.speed)
         new_y = self.y + (dy * self.speed)
         
-        # Basic boundary checking
-        if 0 <= new_x <= SCREEN_WIDTH - PLAYER_SIZE:
+        # Check new positions independently to allow sliding along walls
+        if game_map.is_walkable(new_x + PLAYER_SIZE/2, self.y + PLAYER_SIZE/2):
             self.x = new_x
             self.rect.x = new_x
         
-        if 0 <= new_y <= SCREEN_HEIGHT - PLAYER_SIZE:
+        if game_map.is_walkable(self.x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
             self.y = new_y
             self.rect.y = new_y
 
-    def handle_input(self):
+    def handle_input(self, game_map):
         """Handle keyboard input for player movement."""
         keys = pygame.key.get_pressed()
         dx = 0
@@ -45,11 +44,17 @@ class Player:
             dx *= 0.707  # 1/√2
             dy *= 0.707
 
-        self.move(dx, dy)
+        self.move(dx, dy, game_map)
 
-    def draw(self, screen):
-        """Draw the player on the screen."""
-        pygame.draw.rect(screen, self.color, self.rect)
+    def draw(self, screen, camera_x=0, camera_y=0):
+        """Draw the player on the screen with camera offset."""
+        draw_rect = pygame.Rect(
+            self.rect.x - camera_x,
+            self.rect.y - camera_y,
+            self.rect.width,
+            self.rect.height
+        )
+        pygame.draw.rect(screen, self.color, draw_rect)
 
     def get_position(self):
         """Return the current position as a tuple."""
