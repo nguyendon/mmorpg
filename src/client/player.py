@@ -47,12 +47,17 @@ class Player:
         # Character stats
         self.level = 1
         self.xp = 0
+        self.xp_to_next_level = 100  # Base XP needed for level 2
         self.max_health = 100
         self.current_health = self.max_health
         self.max_mana = 100
         self.current_mana = self.max_mana
-        self.strength = 10
-        self.defense = 5
+        self.base_strength = 10
+        self.base_defense = 5
+        self.base_speed = PLAYER_SPEED
+        self.strength = self.base_strength
+        self.defense = self.base_defense
+        self.speed = self.base_speed
         
         # Combat properties
         self.attack_range = 60  # Pixels
@@ -174,9 +179,21 @@ class Player:
             # Update movement state
             self.is_moving = dx != 0 or dy != 0
 
-            # Try to move
+            # Calculate new positions
             new_x = self.x + (dx * self.speed)
             new_y = self.y + (dy * self.speed)
+
+            # Get current tile type
+            current_tile = game_map.get_tile(self.x + PLAYER_SIZE/2, self.y + PLAYER_SIZE/2)
+            movement_speed = self.speed
+
+            # Adjust speed for water tiles
+            if current_tile and current_tile.tile_type == TileType.WATER:
+                movement_speed *= 0.5  # 50% slower in water
+
+            # Apply movement with adjusted speed
+            new_x = self.x + (dx * movement_speed)
+            new_y = self.y + (dy * movement_speed)
 
             # Check new positions independently to allow sliding along walls
             if game_map.is_walkable(new_x + PLAYER_SIZE/2, self.y + PLAYER_SIZE/2):
@@ -370,6 +387,31 @@ class Player:
                 highlight_height = max(1, int(bar_height * 0.3))
                 pygame.draw.rect(screen, (100, 100, 255),
                                (bar_x, mana_bar_y, bar_width * mana_pct, highlight_height))
+                               
+            # Draw XP bar
+            xp_pct = self.xp / self.xp_to_next_level
+            xp_bar_y = mana_bar_y - 7  # Position above mana bar
+            
+            # Background (dark gray)
+            pygame.draw.rect(screen, (64, 64, 64),
+                           (bar_x, xp_bar_y, bar_width, bar_height))
+            # XP (gold)
+            if xp_pct > 0:
+                xp_color = (255, 215, 0)  # Gold color
+                pygame.draw.rect(screen, xp_color,
+                               (bar_x, xp_bar_y, bar_width * xp_pct, bar_height))
+                # Add highlight
+                highlight_height = max(1, int(bar_height * 0.3))
+                pygame.draw.rect(screen, (255, 235, 100),
+                               (bar_x, xp_bar_y, bar_width * xp_pct, highlight_height))
+                               
+            # Draw level number
+            font = pygame.font.Font(None, 20)
+            level_text = f"Lv.{self.level}"
+            level_surface = font.render(level_text, True, (255, 255, 255))
+            level_x = bar_x - level_surface.get_width() - 5
+            level_y = xp_bar_y
+            screen.blit(level_surface, (level_x, level_y))
                 
             # Draw damage numbers with colors and effects
             font = pygame.font.Font(None, 24)  # Slightly larger font
@@ -492,11 +534,53 @@ class Player:
             
         return False
         
-    def update_equipment_stats(self):
-        """Update player stats based on equipped items"""
-        # Reset to base stats
-        self.strength = 10
-        self.defense = 5
+    def gain_xp(self, amount):
+        """Add XP and check for level up"""
+        self.xp += amount
+        
+        # Check for level up
+        while self.xp >= self.xp_to_next_level:
+            self.level_up()
+            
+    def level_up(self):
+        """Level up the character and increase stats"""
+        self.level += 1
+        self.xp -= self.xp_to_next_level
+        
+        # Increase XP needed for next level (exponential growth)
+        self.xp_to_next_level = int(self.xp_to_next_level * 1.5)
+        
+        # Increase base stats
+        self.base_strength += 2
+        self.base_defense += 1
+        self.base_speed += 5
+        
+        # Increase max health and mana
+        old_max_health = self.max_health
+        old_max_mana = self.max_mana
+        
+        self.max_health = int(self.max_health * 1.2)  # 20% increase
+        self.max_mana = int(self.max_mana * 1.15)    # 15% increase
+        
+        # Heal for the difference in max health/mana
+        self.current_health += (self.max_health - old_max_health)
+        self.current_mana += (self.max_mana - old_max_mana)
+        
+        # Update current stats
+        self.update_stats()
+        
+        # Create level up effect
+        if self.particle_system:
+            self.particle_system.create_special_attack_effect(
+                self.rect.centerx, self.rect.centery,
+                color=(255, 215, 0)  # Gold color for level up
+            )
+            
+    def update_stats(self):
+        """Update current stats based on base stats and equipment"""
+        self.strength = self.base_strength
+        self.defense = self.base_defense
+        self.speed = self.base_speed
         
         # Add equipment bonuses
         for item in self.equipment.values():
@@ -507,11 +591,11 @@ class Player:
                     self.defense += item.stats['defense']
                 if 'speed' in item.stats:
                     self.speed += item.stats['speed']
-                if 'magic' in item.stats:
-                    # Could add magic damage bonus
-                    pass
-                if 'mana_regen' in item.stats:
-                    self.MANA_REGEN_RATE += item.stats['mana_regen']
+                    
+    def update_equipment_stats(self):
+        """Update player stats based on equipped items"""
+        # Reset to base stats
+        self.update_stats()
                     
     def _get_attack_hitbox(self):
         """Get the attack hitbox based on player direction"""

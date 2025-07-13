@@ -140,14 +140,11 @@ class GameMap:
             
         current_tile = self.tiles[tile_y][tile_x]
         
-        # If in water, allow movement only if already in that tile
-        # This prevents getting stuck in water but makes it impossible to enter
+        # If in water, allow movement but at reduced speed (handled in Player class)
         if current_tile.tile_type == TileType.WATER:
-            player_current_tile_x = int(self.last_safe_x // self.tile_size)
-            player_current_tile_y = int(self.last_safe_y // self.tile_size)
-            return tile_x == player_current_tile_x and tile_y == player_current_tile_y
+            return True  # Water is now traversable
             
-        # Update last safe position if on walkable ground
+        # Store last safe position when on solid ground
         if current_tile.walkable:
             self.last_safe_x = tile_x * self.tile_size + self.tile_size / 2
             self.last_safe_y = tile_y * self.tile_size + self.tile_size / 2

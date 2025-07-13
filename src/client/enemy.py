@@ -257,6 +257,10 @@ class Enemy:
         if self.current_health <= 0:
             self.current_health = 0
             self.is_alive = False
+            # Grant XP to player when defeated
+            if hasattr(player, 'gain_xp'):
+                scaled_xp = int(self.exp_value * (1 + (self.level - 1) * 0.1))  # 10% more XP per level
+                player.gain_xp(scaled_xp)
             
     def attack(self, player):
         """Attack the player"""
