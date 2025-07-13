@@ -24,12 +24,9 @@ class GameClient:
         self.camera_x = 0
         self.camera_y = 0
 
-        # Set up basic colors
-        self.colors = {
-            'BLACK': (0, 0, 0),
-            'WHITE': (255, 255, 255),
-            'GRAY': (128, 128, 128)
-        }
+        # Animation timer
+        self.animation_timer = 0
+        self.animation_interval = 0.25  # Update animations every 250ms
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -41,6 +38,12 @@ class GameClient:
 
     def update(self):
         dt = self.clock.get_time() / 1000.0  # Convert to seconds
+        
+        # Update animation timer
+        self.animation_timer += dt
+        if self.animation_timer >= self.animation_interval:
+            self.animation_timer = 0
+            self.game_map.update(dt)
         
         # Handle player input and movement
         self.player.handle_input(self.game_map)
@@ -58,7 +61,7 @@ class GameClient:
 
     def render(self):
         # Fill background
-        self.screen.fill(self.colors['BLACK'])
+        self.screen.fill((0, 0, 0))
         
         # Draw game map
         self.game_map.draw(self.screen, int(self.camera_x), int(self.camera_y))

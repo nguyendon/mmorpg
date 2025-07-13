@@ -19,14 +19,17 @@ class GameMap:
         
         # Add some sample features (we'll make this data-driven later)
         self._create_sample_map()
+        self._calculate_transitions()
 
     def _load_sprites(self):
         """Load all tile sprites."""
         base_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'images', 'tiles')
-        for tile_type in TileType:
-            sprite_name = Tile.TILE_SPRITES[tile_type]
-            sprite_path = os.path.join(base_path, sprite_name)
-            self.sprite_manager.load_sprite(sprite_name, sprite_path)
+        
+        # Load all PNG files in the tiles directory
+        for filename in os.listdir(base_path):
+            if filename.endswith('.png'):
+                sprite_path = os.path.join(base_path, filename)
+                self.sprite_manager.load_sprite(filename, sprite_path)
 
     def _create_sample_map(self):
         """Create a sample map with various features"""
@@ -50,6 +53,34 @@ class GameMap:
             for y in range(18, 22):
                 self.tiles[y][x] = Tile(TileType.SAND)
 
+    def _calculate_transitions(self):
+        """Calculate transitions between different terrain types."""
+        directions = {
+            'top': (0, -1),
+            'right': (1, 0),
+            'bottom': (0, 1),
+            'left': (-1, 0)
+        }
+
+        for y in range(self.height):
+            for x in range(self.width):
+                current_tile = self.tiles[y][x]
+                
+                # Check each direction for different terrain types
+                for direction, (dx, dy) in directions.items():
+                    nx, ny = x + dx, y + dy
+                    
+                    if 0 <= nx < self.width and 0 <= ny < self.height:
+                        neighbor_tile = self.tiles[ny][nx]
+                        if neighbor_tile.tile_type != current_tile.tile_type:
+                            current_tile.set_transition(neighbor_tile.tile_type, direction)
+
+    def update(self, dt):
+        """Update animated tiles."""
+        for row in self.tiles:
+            for tile in row:
+                tile.update_animation()
+
     def draw(self, screen, camera_x=0, camera_y=0):
         """Draw the visible portion of the map"""
         # Get the visible range based on screen size
@@ -65,12 +96,20 @@ class GameMap:
         for y in range(start_y, end_y):
             for x in range(start_x, end_x):
                 tile = self.tiles[y][x]
+                screen_x = x * self.tile_size - camera_x
+                screen_y = y * self.tile_size - camera_y
+                
+                # Draw base tile
                 sprite = self.sprite_manager.get_sprite(tile.sprite_name)
                 if sprite:
-                    screen.blit(sprite, (
-                        x * self.tile_size - camera_x,
-                        y * self.tile_size - camera_y
-                    ))
+                    screen.blit(sprite, (screen_x, screen_y))
+                
+                # Draw transition if exists
+                transition_sprite_name = tile.get_transition_sprite()
+                if transition_sprite_name:
+                    transition_sprite = self.sprite_manager.get_sprite(transition_sprite_name)
+                    if transition_sprite:
+                        screen.blit(transition_sprite, (screen_x, screen_y))
 
     def is_walkable(self, x, y):
         """Check if a tile position is walkable"""
