@@ -40,8 +40,11 @@ class GameClient:
                     self.running = False
 
     def update(self):
+        dt = self.clock.get_time() / 1000.0  # Convert to seconds
+        
         # Handle player input and movement
         self.player.handle_input(self.game_map)
+        self.player.update(dt)
         
         # Update camera to follow player
         self.camera_x = self.player.x - SCREEN_WIDTH // 2

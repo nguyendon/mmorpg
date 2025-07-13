@@ -1,5 +1,7 @@
 import pygame
 from ..common.tiles import Tile, TileType
+from .sprite_manager import SpriteManager
+import os
 
 class GameMap:
     def __init__(self, width, height, tile_size=32):
@@ -8,11 +10,23 @@ class GameMap:
         self.tile_size = tile_size
         self.tiles = []
         
+        # Initialize sprite manager and load tile sprites
+        self.sprite_manager = SpriteManager()
+        self._load_sprites()
+        
         # Initialize with grass
         self.tiles = [[Tile(TileType.GRASS) for _ in range(width)] for _ in range(height)]
         
         # Add some sample features (we'll make this data-driven later)
         self._create_sample_map()
+
+    def _load_sprites(self):
+        """Load all tile sprites."""
+        base_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'images', 'tiles')
+        for tile_type in TileType:
+            sprite_name = Tile.TILE_SPRITES[tile_type]
+            sprite_path = os.path.join(base_path, sprite_name)
+            self.sprite_manager.load_sprite(sprite_name, sprite_path)
 
     def _create_sample_map(self):
         """Create a sample map with various features"""
@@ -51,15 +65,12 @@ class GameMap:
         for y in range(start_y, end_y):
             for x in range(start_x, end_x):
                 tile = self.tiles[y][x]
-                rect = pygame.Rect(
-                    x * self.tile_size - camera_x,
-                    y * self.tile_size - camera_y,
-                    self.tile_size,
-                    self.tile_size
-                )
-                pygame.draw.rect(screen, tile.color, rect)
-                # Add a grid line
-                pygame.draw.rect(screen, (0, 0, 0), rect, 1)
+                sprite = self.sprite_manager.get_sprite(tile.sprite_name)
+                if sprite:
+                    screen.blit(sprite, (
+                        x * self.tile_size - camera_x,
+                        y * self.tile_size - camera_y
+                    ))
 
     def is_walkable(self, x, y):
         """Check if a tile position is walkable"""
