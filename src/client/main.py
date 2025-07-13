@@ -77,8 +77,8 @@ class GameClient:
             "cooldown": 0.5,
             "projectile_speed": 500
         })
-        self.player.pickup_item(starting_gun)
-        self.player.equip_item(0)  # Equip the gun in the first slot
+        self.player.inventory.add_item(starting_gun)
+        self.player.gun = starting_gun  # Directly equip the gun
 
         # Initialize UI
         self.ui = UI()

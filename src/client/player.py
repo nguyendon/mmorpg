@@ -493,10 +493,10 @@ class Player:
             
         elif item.item_type == ItemType.GUN:
             # Unequip current gun if any
-            if self.equipment['gun']:
-                self.inventory.add_item(self.equipment['gun'])
-            self.equipment['gun'] = self.inventory.remove_item(item_index)
-            self.gun = item  # Store reference to gun for easy access
+            if self.gun:
+                self.inventory.add_item(self.gun)
+            # Remove and equip new gun
+            self.gun = self.inventory.remove_item(item_index)
             return True
             
         return False
