@@ -70,8 +70,19 @@ class GameClient:
         player_y = SCREEN_HEIGHT // 2
         self.player = Player(player_x, player_y)
 
+        # Give player a starting gun
+        starting_gun = Item("Starting Pistol", ItemType.GUN, "A reliable starter weapon", "pistol.png", {
+            "damage": 10,
+            "range": 300,
+            "cooldown": 0.5,
+            "projectile_speed": 500
+        })
+        self.player.pickup_item(starting_gun)
+        self.player.equip_item(0)  # Equip the gun in the first slot
+
         # Initialize UI
         self.ui = UI()
+        self.equipment_visible = True  # Track equipment menu visibility
 
         # Initialize particle system
         self.particle_system = ParticleSystem()
@@ -107,7 +118,8 @@ class GameClient:
             "U - Wave Attack (40 Mana)",
             "SPACE - Fire Gun (if equipped)",
             "I - Toggle Inventory",
-            "E - Interact with NPCs",
+            "Q - Toggle Equipment Menu",
+            "E - Interact with NPCs/Portals",
             "H - Toggle Help Menu",
             "R - Emergency Respawn",
             "ESC - Quit Game",
@@ -232,6 +244,9 @@ class GameClient:
                 elif event.key == pygame.K_i:
                     # Toggle inventory
                     self.player.inventory.visible = not self.player.inventory.visible
+                elif event.key == pygame.K_q:
+                    # Toggle equipment menu
+                    self.equipment_visible = not self.equipment_visible
                 elif event.key == pygame.K_e:
                     # Check for NPC interaction
                     for npc in self.npc_spawner.npcs:
@@ -567,7 +582,11 @@ class GameClient:
         self.particle_system.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
         # Draw UI
-        self.ui.draw(self.screen, self.player, self.map_manager.get_current_map())
+        if self.equipment_visible:
+            self.ui.draw(self.screen, self.player, self.map_manager.get_current_map())
+        else:
+            # Draw only status bar and other essential UI elements
+            self.draw_status_bar(self.screen)
         
         # Draw status bar
         self.draw_status_bar(self.screen)
