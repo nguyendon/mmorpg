@@ -271,7 +271,10 @@ class GameClient:
                     # Handle inventory clicks if inventory is visible
                     if self.player.inventory.visible:
                         mouse_pos = pygame.mouse.get_pos()
-                        clicked_item = self.player.inventory.handle_click(*mouse_pos)
+                        clicked_item = self.player.inventory.handle_click(
+                            mouse_pos[0], mouse_pos[1],
+                            self.screen.get_width(), self.screen.get_height()
+                        )
                         if clicked_item:
                             self.player.equip_item(self.player.inventory.selected_slot)
 

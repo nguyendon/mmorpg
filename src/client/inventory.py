@@ -153,14 +153,14 @@ class Inventory:
             return rarities.get(item.stats['rarity'], (255, 255, 255))
         return (255, 255, 255)  # Default white
     
-    def handle_click(self, screen_x, screen_y):
+    def handle_click(self, screen_x, screen_y, screen_width, screen_height):
         """Handle mouse click in inventory"""
         if not self.visible:
             return
             
         # Calculate inventory position
-        inv_x = (screen.get_width() - (5 * (self.slot_size + self.padding) + self.padding)) // 2
-        inv_y = (screen.get_height() - ((self.size // 5) * (self.slot_size + self.padding) + self.padding)) // 2
+        inv_x = (screen_width - (5 * (self.slot_size + self.padding) + self.padding)) // 2
+        inv_y = (screen_height - ((self.size // 5) * (self.slot_size + self.padding) + self.padding)) // 2
         
         # Calculate clicked slot
         slot_x = (screen_x - inv_x - self.padding) // (self.slot_size + self.padding)
