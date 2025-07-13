@@ -7,6 +7,7 @@ class TileType(Enum):
     WALL = auto()
     STONE = auto()
     SAND = auto()
+    PORTAL = auto()
 
 class Tile:
     # Dictionary to map tile types to sprite patterns
@@ -16,6 +17,7 @@ class Tile:
         TileType.WALL: ['wall_{}.png'.format(i) for i in range(2)],
         TileType.STONE: ['stone_{}.png'.format(i) for i in range(3)],
         TileType.SAND: ['sand_{}.png'.format(i) for i in range(3)],
+        TileType.PORTAL: ['portal.png'],  # We'll need to create this sprite
     }
 
     # Transition tiles mapping
@@ -30,7 +32,7 @@ class Tile:
     def __init__(self, tile_type: TileType):
         self.tile_type = tile_type
         self.sprite_name = random.choice(self.TILE_SPRITES[tile_type])
-        self.walkable = tile_type not in [TileType.WATER, TileType.WALL]
+        self.walkable = tile_type not in [TileType.WATER, TileType.WALL]  # Portals are walkable
         self.animation_frame = 0
         self.transition = None
         self.transition_direction = None

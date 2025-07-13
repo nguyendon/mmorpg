@@ -3,6 +3,7 @@ import sys
 import random
 from .player import Player
 from .map import GameMap
+from .map_manager import MapManager
 from .ui import UI
 from .enemy import Enemy
 from .item import Item
@@ -10,6 +11,7 @@ from .particle_system import ParticleSystem
 from .enemy_spawner import EnemySpawner
 from .npc_spawner import NPCSpawner
 from ..common.constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, PLAYER_SIZE
+from ..common.tiles import TileType
 
 class GameClient:
     def __init__(self):
@@ -21,10 +23,49 @@ class GameClient:
         self.running = True
         self._initialized = True
 
-        # Create game map (30x30 tiles)
-        self.game_map = GameMap(30, 30)
+        # Create map manager and multiple maps
+        self.map_manager = MapManager()
         
-        # Create player at center of screen
+        # Create main town map (30x30 tiles)
+        town_map = GameMap(30, 30)
+        self.map_manager.add_map("town", town_map)
+        
+        # Create forest map (40x40 tiles)
+        forest_map = GameMap(40, 40)
+        self._customize_forest_map(forest_map)
+        self.map_manager.add_map("forest", forest_map)
+        
+        # Create dungeon map (25x25 tiles)
+        dungeon_map = GameMap(25, 25)
+        self._customize_dungeon_map(dungeon_map)
+        self.map_manager.add_map("dungeon", dungeon_map)
+        
+        # Add portals between maps
+        # Town -> Forest portal
+        self.map_manager.add_portal(
+            "town", 28 * 32, 15 * 32,  # Position in town map
+            "forest", 2 * 32, 15 * 32   # Target position in forest map
+        )
+        
+        # Forest -> Town portal
+        self.map_manager.add_portal(
+            "forest", 1 * 32, 15 * 32,  # Position in forest map
+            "town", 27 * 32, 15 * 32    # Target position in town map
+        )
+        
+        # Forest -> Dungeon portal
+        self.map_manager.add_portal(
+            "forest", 38 * 32, 20 * 32,  # Position in forest map
+            "dungeon", 2 * 32, 12 * 32   # Target position in dungeon map
+        )
+        
+        # Dungeon -> Forest portal
+        self.map_manager.add_portal(
+            "dungeon", 1 * 32, 12 * 32,  # Position in dungeon map
+            "forest", 37 * 32, 20 * 32   # Target position in forest map
+        )
+        
+        # Create player at center of town
         player_x = SCREEN_WIDTH // 2
         player_y = SCREEN_HEIGHT // 2
         self.player = Player(player_x, player_y)
@@ -37,7 +78,7 @@ class GameClient:
         self.player.particle_system = self.particle_system
 
         # Initialize enemy spawner and enemies list
-        self.enemy_spawner = EnemySpawner(self.game_map)
+        self.enemy_spawner = EnemySpawner(self.map_manager.get_current_map())
         self.enemies = []
         self.items = []  # List to store active items
         self._spawn_test_enemies()
@@ -81,14 +122,53 @@ class GameClient:
             "Mana regenerates over time",
             "Talk to NPCs for information",
             "Critical hits show yellow numbers",
-            "Special attacks show cyan numbers"
+            "Special attacks show cyan numbers",
+            "Purple portals teleport you to new areas"
         ]
         
         # Dialog system
         self.show_dialog = False
         self.current_dialog = ""
         self.dialog_font = pygame.font.Font(None, 36)
-        
+
+    def _customize_forest_map(self, forest_map):
+        """Create a forest-themed map with more trees and water"""
+        # Add more water features
+        for x in range(10, 15):
+            for y in range(8, 35):
+                forest_map.tiles[y][x].tile_type = TileType.WATER
+                
+        # Add stone formations
+        for x in range(25, 30):
+            for y in range(15, 20):
+                forest_map.tiles[y][x].tile_type = TileType.STONE
+                
+        forest_map._calculate_transitions()
+
+    def _customize_dungeon_map(self, dungeon_map):
+        """Create a dungeon-themed map with more walls and stone"""
+        # Create outer walls
+        for x in range(dungeon_map.width):
+            dungeon_map.tiles[0][x].tile_type = TileType.WALL
+            dungeon_map.tiles[dungeon_map.height-1][x].tile_type = TileType.WALL
+            
+        for y in range(dungeon_map.height):
+            dungeon_map.tiles[y][0].tile_type = TileType.WALL
+            dungeon_map.tiles[y][dungeon_map.width-1].tile_type = TileType.WALL
+            
+        # Add stone floor
+        for y in range(1, dungeon_map.height-1):
+            for x in range(1, dungeon_map.width-1):
+                dungeon_map.tiles[y][x].tile_type = TileType.STONE
+                
+        # Add some internal walls to create rooms
+        for x in range(8, 12):
+            for y in range(5, 20):
+                if y != 12:  # Leave a gap for passage
+                    dungeon_map.tiles[y][x].tile_type = TileType.WALL
+                    
+        dungeon_map._calculate_transitions()
+            
     def __del__(self):
         if self._initialized:
             pygame.quit()
@@ -124,7 +204,6 @@ class GameClient:
                 enemy = self.enemy_spawner._create_enemy(*spawn_point)
                 if enemy:
                     self.enemies.append(enemy)
-                    # Create spawn effect
                     if self.particle_system:
                         self.particle_system.create_spawn_effect(
                             enemy.x + PLAYER_SIZE/2,
@@ -167,31 +246,44 @@ class GameClient:
         self.animation_timer += dt
         if self.animation_timer >= self.animation_interval:
             self.animation_timer = 0
-            self.game_map.update(dt)
+            self.map_manager.update(dt)
         
         # Update player's enemy reference
         self.player.current_enemies = self.enemies
         
         # Handle player input and movement
-        self.player.handle_input(self.game_map)
-        self.player.update(dt, self.game_map)
+        current_map = self.map_manager.get_current_map()
+        self.player.handle_input(current_map)
+        self.player.update(dt, current_map)
+        
+        # Check for portal transitions
+        portal_target = self.map_manager.check_portal(self.player.x, self.player.y)
+        if portal_target:
+            target_x, target_y = portal_target
+            self.player.x = target_x
+            self.player.y = target_y
+            self.player.rect.x = self.player.x
+            self.player.rect.y = self.player.y
+            # Clear enemies when changing maps
+            self.enemies.clear()
+            # Update enemy spawner to use new map
+            self.enemy_spawner = EnemySpawner(self.map_manager.get_current_map())
         
         # Update enemies
         for enemy in self.enemies:
-            enemy.update(dt, self.player, self.game_map)
+            enemy.update(dt, self.player, current_map)
         
         # Update NPCs
         self.npc_spawner.update(self.player.x, self.player.y)
         
         # Remove dead enemies and create death effects
-        for enemy in self.enemies[:]:  # Copy list to safely remove while iterating
+        for enemy in self.enemies[:]:
             if not enemy.is_alive:
                 if self.particle_system:
                     self.particle_system.create_death_effect(
                         enemy.x + PLAYER_SIZE/2,
                         enemy.y + PLAYER_SIZE/2
                     )
-                # Chance to spawn a health potion
                 if random.random() < 0.3:  # 30% chance
                     potion_type = "greater_health_potion" if random.random() < 0.3 else "health_potion"
                     item = Item(enemy.x, enemy.y, potion_type)
@@ -199,32 +291,28 @@ class GameClient:
                 self.enemies.remove(enemy)
                 
         # Update items and check for pickups
-        for item in self.items[:]:  # Copy list to safely remove while iterating
+        for item in self.items[:]:
             item.update(dt)
-            # Calculate distance to player
             dx = self.player.x - item.x
             dy = self.player.y - item.y
             distance = (dx * dx + dy * dy) ** 0.5
             
             if distance <= item.pickup_range:
-                # Heal the player
                 self.player.current_health = min(
                     self.player.max_health,
                     self.player.current_health + item.heal_amount
                 )
-                # Create heal effect
                 if self.particle_system:
                     self.particle_system.create_hit_effect(
                         self.player.rect.centerx,
                         self.player.rect.centery,
-                        color=(0, 255, 0)  # Green for healing
+                        color=(0, 255, 0)
                     )
                 self.items.remove(item)
         
         # Try to spawn new enemy
         if new_enemy := self.enemy_spawner.update(dt, self.player, self.enemies):
             self.enemies.append(new_enemy)
-            # Create spawn effect
             if self.particle_system:
                 self.particle_system.create_spawn_effect(
                     new_enemy.x + PLAYER_SIZE/2,
@@ -235,20 +323,19 @@ class GameClient:
         self.particle_system.update(dt)
         
         # Check if player is in unwalkable tile and force respawn if stuck
-        player_tile_x = int(self.player.x // self.game_map.tile_size)
-        player_tile_y = int(self.player.y // self.game_map.tile_size)
-        if not self.game_map.is_walkable(self.player.x + PLAYER_SIZE/2, self.player.y + PLAYER_SIZE/2):
+        player_tile_x = int(self.player.x // current_map.tile_size)
+        player_tile_y = int(self.player.y // current_map.tile_size)
+        if not current_map.is_walkable(self.player.x + PLAYER_SIZE/2, self.player.y + PLAYER_SIZE/2):
             # Try to find nearest walkable tile
             for dy in [-1, 0, 1]:
                 for dx in [-1, 0, 1]:
-                    test_x = (player_tile_x + dx) * self.game_map.tile_size + self.game_map.tile_size/2
-                    test_y = (player_tile_y + dy) * self.game_map.tile_size + self.game_map.tile_size/2
-                    if self.game_map.is_walkable(test_x, test_y):
+                    test_x = (player_tile_x + dx) * current_map.tile_size + current_map.tile_size/2
+                    test_y = (player_tile_y + dy) * current_map.tile_size + current_map.tile_size/2
+                    if current_map.is_walkable(test_x, test_y):
                         self.player.x = test_x - PLAYER_SIZE/2
                         self.player.y = test_y - PLAYER_SIZE/2
                         self.player.rect.x = self.player.x
                         self.player.rect.y = self.player.y
-                        # Reset any movement-blocking states
                         self.player.knockback_distance = 0
                         self.player.current_attack = None
                         self.player.is_attacking = False
@@ -262,7 +349,6 @@ class GameClient:
                 self.player.y = SCREEN_HEIGHT // 2
                 self.player.rect.x = self.player.x
                 self.player.rect.y = self.player.y
-                # Reset all movement-blocking states
                 self.player.knockback_distance = 0
                 self.player.current_attack = None
                 self.player.is_attacking = False
@@ -272,8 +358,8 @@ class GameClient:
         self.camera_y = self.player.y - SCREEN_HEIGHT // 2
         
         # Calculate maximum camera bounds
-        max_x = max(0, self.game_map.width * self.game_map.tile_size - SCREEN_WIDTH)
-        max_y = max(0, self.game_map.height * self.game_map.tile_size - SCREEN_HEIGHT)
+        max_x = max(0, current_map.width * current_map.tile_size - SCREEN_WIDTH)
+        max_y = max(0, current_map.height * current_map.tile_size - SCREEN_HEIGHT)
         
         # Keep camera within bounds
         self.camera_x = max(0, min(self.camera_x, max_x))
@@ -283,8 +369,8 @@ class GameClient:
         # Fill background
         self.screen.fill((0, 0, 0))
         
-        # Draw game map
-        self.game_map.draw(self.screen, int(self.camera_x), int(self.camera_y))
+        # Draw current map
+        self.map_manager.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
         # Draw NPCs
         self.npc_spawner.draw(self.screen, int(self.camera_x), int(self.camera_y))
@@ -304,7 +390,7 @@ class GameClient:
         self.particle_system.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
         # Draw UI
-        self.ui.draw(self.screen, self.player, self.game_map)
+        self.ui.draw(self.screen, self.player, self.map_manager.get_current_map())
         
         # Draw dialog box if active
         if self.show_dialog:
