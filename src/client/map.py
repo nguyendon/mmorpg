@@ -10,9 +10,9 @@ class GameMap:
         self.tile_size = tile_size
         self.tiles = []
         
-        # Initialize sprite manager and load tile sprites
+        # Initialize sprite manager
         self.sprite_manager = SpriteManager()
-        self._load_sprites()
+        self.sprites_loaded = False
         
         # Initialize with grass
         self.tiles = [[Tile(TileType.GRASS) for _ in range(width)] for _ in range(height)]
@@ -24,6 +24,12 @@ class GameMap:
         # Add some sample features (we'll make this data-driven later)
         self._create_sample_map()
         self._calculate_transitions()
+
+    def ensure_sprites_loaded(self):
+        """Ensure sprites are loaded before drawing"""
+        if not self.sprites_loaded:
+            self._load_sprites()
+            self.sprites_loaded = True
 
     def _load_sprites(self):
         """Load all tile sprites."""
@@ -92,6 +98,9 @@ class GameMap:
 
     def draw(self, screen, camera_x=0, camera_y=0):
         """Draw the visible portion of the map"""
+        # Ensure sprites are loaded before drawing
+        self.ensure_sprites_loaded()
+        
         # Get the visible range based on screen size
         screen_width = screen.get_width()
         screen_height = screen.get_height()

@@ -19,10 +19,20 @@ class GameServer:
         await self.register(websocket)
         try:
             async for message in websocket:
-                # Handle client messages here
-                print(f"Received message: {message}")
-                # Echo back for now
-                await websocket.send(f"Server received: {message}")
+                try:
+                    # Handle client messages here
+                    print(f"Received message: {message}")
+                    # Echo back for now
+                    await websocket.send(f"Server received: {message}")
+                except websockets.exceptions.ConnectionClosed:
+                    break
+                except Exception as e:
+                    print(f"Error handling message: {e}")
+                    await websocket.send(f"Error: {str(e)}")
+        except websockets.exceptions.ConnectionClosed:
+            print("Client connection closed unexpectedly")
+        except Exception as e:
+            print(f"Unexpected error: {e}")
         finally:
             await self.unregister(websocket)
 

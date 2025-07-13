@@ -34,20 +34,21 @@ class Enemy:
         
         # Create a more detailed enemy appearance
         self.sprite = pygame.Surface((PLAYER_SIZE, PLAYER_SIZE), pygame.SRCALPHA)
-        self._create_enemy_sprite()
+        self._create_enemy_sprite()  # Default color will be used
         
         # Combat text
         self.damage_numbers = []  # List of (damage, x, y, timer, color) tuples
         self.damage_number_duration = 1.0  # How long damage numbers stay on screen
         
-    def _create_enemy_sprite(self):
+    def _create_enemy_sprite(self, color=(150, 0, 0)):
         """Create a more detailed enemy sprite"""
-        # Main body (dark red)
-        pygame.draw.rect(self.sprite, (150, 0, 0), 
+        # Main body (dark red or custom color)
+        pygame.draw.rect(self.sprite, color, 
                         (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8))
         
-        # Lighter red outline
-        pygame.draw.rect(self.sprite, (200, 0, 0), 
+        # Lighter outline (brighten the base color)
+        outline_color = tuple(min(c + 50, 255) for c in color)
+        pygame.draw.rect(self.sprite, outline_color, 
                         (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8), 2)
         
         # Eyes (white with black pupils)
@@ -67,13 +68,14 @@ class Enemy:
                           (PLAYER_SIZE-14, 12, 4, 4))
         
         # Angry eyebrows
-        pygame.draw.line(self.sprite, (100, 0, 0), 
+        brow_color = tuple(max(c - 50, 0) for c in color)  # Darker than base color
+        pygame.draw.line(self.sprite, brow_color, 
                         (6, 6), (14, 10), 2)
-        pygame.draw.line(self.sprite, (100, 0, 0), 
+        pygame.draw.line(self.sprite, brow_color, 
                         (PLAYER_SIZE-6, 6), (PLAYER_SIZE-14, 10), 2)
         
         # Spikes on top
-        spike_color = (200, 0, 0)
+        spike_color = outline_color
         spike_points = [
             (8, 4), (12, 0), (16, 4),
             (16, 4), (20, 0), (24, 4),

@@ -4,16 +4,20 @@ from .player import Player
 from .map import GameMap
 from .ui import UI
 from .enemy import Enemy
+from .particle_system import ParticleSystem
+from .enemy_spawner import EnemySpawner
 from ..common.constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, PLAYER_SIZE
 
 class GameClient:
     def __init__(self):
+        # Initialize pygame first
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("MMORPG Client")
         self.clock = pygame.time.Clock()
         self.running = True
-        
+        self._initialized = True
+
         # Create game map (30x30 tiles)
         self.game_map = GameMap(30, 30)
         
@@ -25,7 +29,12 @@ class GameClient:
         # Initialize UI
         self.ui = UI()
 
-        # Initialize enemies list and spawn some test enemies
+        # Initialize particle system
+        self.particle_system = ParticleSystem()
+        self.player.particle_system = self.particle_system
+
+        # Initialize enemy spawner and enemies list
+        self.enemy_spawner = EnemySpawner(self.game_map)
         self.enemies = []
         self._spawn_test_enemies()
 
@@ -44,38 +53,45 @@ class GameClient:
             "Controls:",
             "WASD / Arrow Keys - Move",
             "J - Basic Attack",
-            "K - Special Attack (AoE)",
+            "K - Spin Attack",
+            "L - Dash Attack",
+            "U - Wave Attack",
             "H - Toggle Help Menu",
             "R - Emergency Respawn",
             "ESC - Quit Game",
             "",
             "Combat:",
-            "Basic Attack: Press J to attack in facing direction",
-            "Special Attack: Press K for spinning attack",
-            "Red enemies will chase and attack you",
-            "Green bar is your health",
-            "Red bar is enemy health",
+            "Basic Attack (J): Quick slash",
+            "Spin Attack (K): Hit all nearby enemies",
+            "Dash Attack (L): Quick dash with damage",
+            "Wave Attack (U): Ranged energy wave",
             "",
             "Tips:",
             "Stay out of water!",
-            "Special attack has longer cooldown",
-            "Face enemies to attack them",
-            "Use knockback to your advantage"
+            "Different attacks have different cooldowns",
+            "Enemies respawn over time",
+            "Critical hits show yellow numbers",
+            "Special attacks show cyan numbers"
         ]
+        
+    def __del__(self):
+        if self._initialized:
+            pygame.quit()
+            self._initialized = False
         
     def _spawn_test_enemies(self):
-        """Spawn some test enemies around the map"""
-        # Spawn 5 goblins in different locations
-        enemy_positions = [
-            (300, 300),
-            (500, 200),
-            (200, 500),
-            (600, 600),
-            (400, 400)
-        ]
-        
-        for pos in enemy_positions:
-            self.enemies.append(Enemy(*pos, "goblin"))
+        """Spawn initial set of enemies"""
+        for _ in range(5):
+            if spawn_point := self.enemy_spawner._find_spawn_point(self.player):
+                enemy = self.enemy_spawner._create_enemy(*spawn_point)
+                if enemy:
+                    self.enemies.append(enemy)
+                    # Create spawn effect
+                    if self.particle_system:
+                        self.particle_system.create_spawn_effect(
+                            enemy.x + PLAYER_SIZE/2,
+                            enemy.y + PLAYER_SIZE/2
+                        )
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -86,12 +102,15 @@ class GameClient:
                     self.running = False
                 elif event.key == pygame.K_h:
                     self.show_help = not self.show_help
-                elif event.key == pygame.K_r:  # Add emergency respawn
+                elif event.key == pygame.K_r:  # Emergency respawn
                     self.player.x = SCREEN_WIDTH // 2
                     self.player.y = SCREEN_HEIGHT // 2
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left click
-                    self.player.attack(self.enemies)
+                    self.player.rect.x = self.player.x
+                    self.player.rect.y = self.player.y
+                    # Reset any movement-blocking states
+                    self.player.knockback_distance = 0
+                    self.player.current_attack = None
+                    self.player.is_attacking = False
 
     def update(self):
         dt = self.clock.get_time() / 1000.0  # Convert to seconds
@@ -113,8 +132,28 @@ class GameClient:
         for enemy in self.enemies:
             enemy.update(dt, self.player, self.game_map)
         
-        # Remove dead enemies
-        self.enemies = [enemy for enemy in self.enemies if enemy.is_alive]
+        # Remove dead enemies and create death effects
+        for enemy in self.enemies[:]:  # Copy list to safely remove while iterating
+            if not enemy.is_alive:
+                if self.particle_system:
+                    self.particle_system.create_death_effect(
+                        enemy.x + PLAYER_SIZE/2,
+                        enemy.y + PLAYER_SIZE/2
+                    )
+                self.enemies.remove(enemy)
+        
+        # Try to spawn new enemy
+        if new_enemy := self.enemy_spawner.update(dt, self.player, self.enemies):
+            self.enemies.append(new_enemy)
+            # Create spawn effect
+            if self.particle_system:
+                self.particle_system.create_spawn_effect(
+                    new_enemy.x + PLAYER_SIZE/2,
+                    new_enemy.y + PLAYER_SIZE/2
+                )
+        
+        # Update particle system
+        self.particle_system.update(dt)
         
         # Check if player is in unwalkable tile and force respawn if stuck
         player_tile_x = int(self.player.x // self.game_map.tile_size)
@@ -130,6 +169,10 @@ class GameClient:
                         self.player.y = test_y - PLAYER_SIZE/2
                         self.player.rect.x = self.player.x
                         self.player.rect.y = self.player.y
+                        # Reset any movement-blocking states
+                        self.player.knockback_distance = 0
+                        self.player.current_attack = None
+                        self.player.is_attacking = False
                         break
                 else:
                     continue
@@ -140,16 +183,22 @@ class GameClient:
                 self.player.y = SCREEN_HEIGHT // 2
                 self.player.rect.x = self.player.x
                 self.player.rect.y = self.player.y
+                # Reset all movement-blocking states
+                self.player.knockback_distance = 0
+                self.player.current_attack = None
+                self.player.is_attacking = False
         
         # Update camera to follow player
         self.camera_x = self.player.x - SCREEN_WIDTH // 2
         self.camera_y = self.player.y - SCREEN_HEIGHT // 2
         
-        # Keep camera within map bounds
-        self.camera_x = max(0, min(self.camera_x, 
-                                 self.game_map.width * self.game_map.tile_size - SCREEN_WIDTH))
-        self.camera_y = max(0, min(self.camera_y, 
-                                 self.game_map.height * self.game_map.tile_size - SCREEN_HEIGHT))
+        # Calculate maximum camera bounds
+        max_x = max(0, self.game_map.width * self.game_map.tile_size - SCREEN_WIDTH)
+        max_y = max(0, self.game_map.height * self.game_map.tile_size - SCREEN_HEIGHT)
+        
+        # Keep camera within bounds
+        self.camera_x = max(0, min(self.camera_x, max_x))
+        self.camera_y = max(0, min(self.camera_y, max_y))
 
     def render(self):
         # Fill background
@@ -164,6 +213,9 @@ class GameClient:
         
         # Draw player
         self.player.draw(self.screen, int(self.camera_x), int(self.camera_y))
+        
+        # Draw particle effects
+        self.particle_system.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
         # Draw UI
         self.ui.draw(self.screen, self.player, self.game_map)

@@ -16,6 +16,14 @@ class Direction(Enum):
 class AnimationState(Enum):
     IDLE = 4
     ATTACK = 5
+    DASH = 6
+    CAST = 7
+
+class AttackType(Enum):
+    SLASH = 1  # Basic melee attack
+    SPIN = 2   # 360-degree attack
+    DASH = 3   # Dash attack
+    WAVE = 4   # Energy wave attack
 
 class DamageType(Enum):
     NORMAL = (255, 255, 255)  # White for normal damage
@@ -23,6 +31,9 @@ class DamageType(Enum):
     SPECIAL = (0, 255, 255)   # Cyan for special attack damage
 
 class Player:
+    # Constants
+    MAX_DAMAGE_NUMBERS = 50
+    
     def __init__(self, x, y):
         self.x = x
         self.y = y
@@ -49,22 +60,39 @@ class Player:
         self.damage_numbers = []  # List of (damage, x, y, timer, color) tuples
         self.damage_number_duration = 1.0  # How long damage numbers stay on screen
         
-        # Special attack properties
-        self.special_attack_cooldown = 2.0  # Seconds
-        self.special_attack_timer = 0
-        self.special_attack_damage = 20
-        self.special_attack_range = 100  # Pixels
-        self.special_attack_knockback = 50
-        self.is_special_attacking = False
-        self.special_attack_duration = 0.3  # Seconds
-        self.special_attack_frame = 0
+        # Attack properties
+        self.current_attack = None
+        self.attack_timers = {
+            AttackType.SLASH: 0,
+            AttackType.SPIN: 0,
+            AttackType.DASH: 0,
+            AttackType.WAVE: 0
+        }
+        self.attack_cooldowns = {
+            AttackType.SLASH: 0.5,
+            AttackType.SPIN: 2.0,
+            AttackType.DASH: 1.5,
+            AttackType.WAVE: 3.0
+        }
         
-        # Reference to enemies (will be set by GameClient)
+        # Dash attack properties
+        self.dash_speed = 500
+        self.dash_duration = 0.2
+        self.dash_timer = 0
+        self.dash_direction = (0, 0)
+        
+        # Wave attack properties
+        self.wave_speed = 300
+        self.wave_lifetime = 0.5
+        self.waves = []  # List of active wave attacks
+        
+        # Reference to enemies and particle system (will be set by GameClient)
         self.current_enemies = []
+        self.particle_system = None
         
         # Animation properties
         self.sprite_manager = SpriteManager()
-        self._load_sprites()
+        self.sprites_loaded = False
         self.direction = Direction.DOWN
         self.state = AnimationState.IDLE
         self.animation_frame = 0
@@ -94,7 +122,7 @@ class Player:
     def handle_input(self, game_map):
         """Handle keyboard input for player movement and actions."""
         # Only prevent movement during attack animation, not during knockback
-        if not self.is_attacking and not self.is_special_attacking:
+        if not self.is_attacking and not self.current_attack:
             keys = pygame.key.get_pressed()
             dx = 0
             dy = 0
@@ -136,83 +164,243 @@ class Player:
 
         # Attack inputs
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_j] and not self.is_attacking and not self.is_special_attacking and self.attack_timer <= 0:
-            self.attack(self.current_enemies)
-        if keys[pygame.K_k] and not self.is_attacking and not self.is_special_attacking and self.special_attack_timer <= 0:
-            self.special_attack(self.current_enemies)
-            
-    def attack(self, enemies):
-        """Perform basic attack"""
-        if not self.is_attacking and self.attack_timer <= 0:
-            self.is_attacking = True
-            self.state = AnimationState.ATTACK
-            self.attack_timer = self.attack_cooldown
-            self.animation_frame = 0
-            
-            # Get attack hitbox based on direction
-            attack_rect = self._get_attack_hitbox()
-            
-            # Check for hits on enemies
-            for enemy in enemies:
-                if enemy.is_alive and attack_rect.colliderect(enemy.rect):
+        if not self.current_attack:
+            if keys[pygame.K_j] and self.attack_timers[AttackType.SLASH] <= 0:
+                self.slash_attack()
+            elif keys[pygame.K_k] and self.attack_timers[AttackType.SPIN] <= 0:
+                self.spin_attack()
+            elif keys[pygame.K_l] and self.attack_timers[AttackType.DASH] <= 0:
+                self.dash_attack()
+            elif keys[pygame.K_u] and self.attack_timers[AttackType.WAVE] <= 0:
+                self.wave_attack()
+                
+    def slash_attack(self):
+        """Basic melee attack"""
+        self.current_attack = AttackType.SLASH
+        self.attack_timers[AttackType.SLASH] = self.attack_cooldowns[AttackType.SLASH]
+        self.state = AnimationState.ATTACK
+        self.is_attacking = True
+        
+        # Get attack hitbox
+        attack_rect = self._get_attack_hitbox()
+        
+        # Create slash effect
+        if self.particle_system:
+            center_x = attack_rect.centerx
+            center_y = attack_rect.centery
+            self.particle_system.create_slash_effect(
+                center_x, center_y, self.direction.name)
+        
+        # Check for hits
+        for enemy in self.current_enemies:
+            if enemy.is_alive and attack_rect.colliderect(enemy.rect):
+                # Calculate knockback direction
+                dx = enemy.x - self.x
+                dy = enemy.y - self.y
+                length = math.sqrt(dx**2 + dy**2)
+                if length > 0:
+                    knockback_direction = (dx/length, dy/length)
+                else:
+                    knockback_direction = (1, 0)
+                    
+                # Check for critical hit
+                is_crit = random.random() < self.crit_chance
+                damage = self.strength * self.crit_multiplier if is_crit else self.strength
+                damage_type = DamageType.CRITICAL if is_crit else DamageType.NORMAL
+                
+                # Deal damage
+                enemy.take_damage(int(damage), knockback_direction, damage_type.value)
+
+    def spin_attack(self):
+        """360-degree spinning attack"""
+        self.current_attack = AttackType.SPIN
+        self.attack_timers[AttackType.SPIN] = self.attack_cooldowns[AttackType.SPIN]
+        self.state = AnimationState.ATTACK
+        self.is_attacking = True
+        
+        # Create spin effect
+        if self.particle_system:
+            self.particle_system.create_special_attack_effect(
+                self.rect.centerx, self.rect.centery)
+        
+        # Check for hits in all directions
+        for enemy in self.current_enemies:
+            if enemy.is_alive:
+                dx = enemy.x - self.x
+                dy = enemy.y - self.y
+                distance = math.sqrt(dx**2 + dy**2)
+                
+                if distance <= self.attack_range * 1.5:  # Larger range for spin attack
                     # Calculate knockback direction
-                    dx = enemy.x - self.x
-                    dy = enemy.y - self.y
-                    length = math.sqrt(dx**2 + dy**2)
-                    if length > 0:
-                        knockback_direction = (dx/length, dy/length)
-                    else:
-                        knockback_direction = (1, 0)
-                        
-                    # Check for critical hit
-                    is_crit = random.random() < self.crit_chance
-                    damage = self.strength * self.crit_multiplier if is_crit else self.strength
-                    damage_type = DamageType.CRITICAL if is_crit else DamageType.NORMAL
+                    knockback_direction = (dx/distance, dy/distance) if distance > 0 else (1, 0)
                     
                     # Deal damage
-                    enemy.take_damage(int(damage), knockback_direction, damage_type.value)
-                    
-    def special_attack(self, enemies):
-        """Perform special spinning attack"""
-        if not self.is_special_attacking and self.special_attack_timer <= 0:
-            self.is_special_attacking = True
-            self.special_attack_timer = self.special_attack_cooldown
-            self.special_attack_frame = 0
+                    enemy.take_damage(
+                        int(self.strength * 1.2),  # 20% more damage
+                        knockback_direction,
+                        DamageType.SPECIAL.value
+                    )
+
+    def dash_attack(self):
+        """Quick dash that damages enemies in path"""
+        self.current_attack = AttackType.DASH
+        self.attack_timers[AttackType.DASH] = self.attack_cooldowns[AttackType.DASH]
+        self.state = AnimationState.DASH
+        self.is_attacking = True
+        
+        # Set dash direction based on current facing
+        if self.direction == Direction.LEFT:
+            self.dash_direction = (-1, 0)
+        elif self.direction == Direction.RIGHT:
+            self.dash_direction = (1, 0)
+        elif self.direction == Direction.UP:
+            self.dash_direction = (0, -1)
+        else:  # Direction.DOWN
+            self.dash_direction = (0, 1)
             
-            # Get all enemies in range
-            for enemy in enemies:
-                if enemy.is_alive:
-                    # Calculate distance to enemy
-                    dx = enemy.x - self.x
-                    dy = enemy.y - self.y
-                    distance = math.sqrt(dx**2 + dy**2)
+        self.dash_timer = self.dash_duration
+
+    def wave_attack(self):
+        """Send out an energy wave"""
+        self.current_attack = AttackType.WAVE
+        self.attack_timers[AttackType.WAVE] = self.attack_cooldowns[AttackType.WAVE]
+        self.state = AnimationState.CAST
+        self.is_attacking = True
+        
+        # Create wave based on direction
+        if self.direction == Direction.LEFT:
+            direction = (-1, 0)
+        elif self.direction == Direction.RIGHT:
+            direction = (1, 0)
+        elif self.direction == Direction.UP:
+            direction = (0, -1)
+        else:  # Direction.DOWN
+            direction = (0, 1)
+            
+        # Add wave to active waves list
+        self.waves.append({
+            'x': self.rect.centerx,
+            'y': self.rect.centery,
+            'direction': direction,
+            'lifetime': self.wave_lifetime,
+            'hit_enemies': set()  # Track which enemies have been hit by this wave
+        })
+        
+        # Create wave effect
+        if self.particle_system:
+            self.particle_system.create_special_attack_effect(
+                self.rect.centerx, self.rect.centery,
+                color=(0, 200, 255)  # Light blue for wave attack
+            )
+
+    def update_wave_attacks(self, dt):
+        """Update active wave attacks"""
+        for wave in self.waves[:]:  # Copy list to safely remove while iterating
+            # Move wave
+            wave['x'] += wave['direction'][0] * self.wave_speed * dt
+            wave['y'] += wave['direction'][1] * self.wave_speed * dt
+            
+            # Create particle trail
+            if self.particle_system:
+                self.particle_system.create_hit_effect(
+                    wave['x'], wave['y'],
+                    color=(0, 200, 255)
+                )
+            
+            # Check for enemy hits
+            wave_rect = pygame.Rect(
+                wave['x'] - 20, wave['y'] - 20,
+                40, 40
+            )
+            
+            for enemy in self.current_enemies:
+                if (enemy.is_alive and 
+                    enemy not in wave['hit_enemies'] and
+                    wave_rect.colliderect(enemy.rect)):
+                    # Calculate knockback direction
+                    knockback_direction = wave['direction']
                     
-                    if distance <= self.special_attack_range:
-                        # Calculate knockback direction
-                        knockback_direction = (dx/distance, dy/distance) if distance > 0 else (1, 0)
-                        
-                        # Deal special attack damage
-                        enemy.take_damage(self.special_attack_damage, knockback_direction, DamageType.SPECIAL.value)
+                    # Deal damage
+                    enemy.take_damage(
+                        int(self.strength * 0.8),  # 80% normal damage
+                        knockback_direction,
+                        DamageType.SPECIAL.value
+                    )
                     
+                    # Mark enemy as hit by this wave
+                    wave['hit_enemies'].add(enemy)
+            
+            # Update lifetime
+            wave['lifetime'] -= dt
+            if wave['lifetime'] <= 0:
+                self.waves.remove(wave)
+
     def update(self, dt, game_map=None):
-        """Update animation state and combat timers."""
-        # Update timers
-        if self.attack_timer > 0:
-            self.attack_timer -= dt
-        if self.special_attack_timer > 0:
-            self.special_attack_timer -= dt
+        """Update player state"""
+        # Update attack timers
+        for attack_type in AttackType:
+            if self.attack_timers[attack_type] > 0:
+                self.attack_timers[attack_type] -= dt
+                
+        # Update current attack
+        if self.current_attack:
+            if self.current_attack == AttackType.DASH:
+                if self.dash_timer > 0:
+                    # Move in dash direction
+                    new_x = self.x + self.dash_direction[0] * self.dash_speed * dt
+                    new_y = self.y + self.dash_direction[1] * self.dash_speed * dt
+                    
+                    # Check if new position is walkable
+                    if game_map and game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
+                        self.x = new_x
+                        self.y = new_y
+                        self.rect.x = new_x
+                        self.rect.y = new_y
+                        
+                        # Create dash effect
+                        if self.particle_system:
+                            self.particle_system.create_hit_effect(
+                                self.rect.centerx, self.rect.centery,
+                                color=(255, 200, 0)  # Golden color for dash
+                            )
+                        
+                        # Check for enemy hits
+                        for enemy in self.current_enemies:
+                            if enemy.is_alive and self.rect.colliderect(enemy.rect):
+                                enemy.take_damage(
+                                    int(self.strength * 1.5),  # 50% more damage
+                                    self.dash_direction,
+                                    DamageType.SPECIAL.value
+                                )
+                    
+                    self.dash_timer -= dt
+                else:
+                    self.current_attack = None
+                    self.state = AnimationState.IDLE
+                    self.is_attacking = False
+            else:
+                # Other attacks end after their animation
+                if self.attack_timers[self.current_attack] <= self.attack_duration:
+                    self.current_attack = None
+                    self.state = AnimationState.IDLE
+                    self.is_attacking = False
+        
+        # Update wave attacks
+        self.update_wave_attacks(dt)
+        
+        # Update other timers and states
         if self.hit_timer > 0:
             self.hit_timer -= dt
             if self.hit_timer <= 0:
                 self.is_hit = False
                 
-        # Handle knockback with better collision detection
+        # Handle knockback
         if self.knockback_distance > 0:
             move_distance = min(self.knockback_distance, 10 * dt)
             new_x = self.x + self.knockback_direction[0] * move_distance
             new_y = self.y + self.knockback_direction[1] * move_distance
             
-            # Check if new position is walkable (if we have a game map)
+            # Check if new position is walkable
             if game_map is None or game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
                 self.x = new_x
                 self.y = new_y
@@ -224,47 +412,23 @@ class Player:
             
             self.knockback_distance -= move_distance
         
-        # Update attack states
-        if self.is_attacking:
-            self.attack_timer += dt
-            if self.attack_timer >= self.attack_duration:
-                self.is_attacking = False
-                self.state = AnimationState.IDLE
-                self.animation_frame = 0
-            else:
-                # Update attack animation frame
-                self.animation_timer += dt
-                if self.animation_timer >= self.animation_speed:
-                    self.animation_timer = 0
-                    self.animation_frame = (self.animation_frame + 1) % 4
-        elif self.is_special_attacking:
-            self.special_attack_frame += dt
-            if self.special_attack_frame >= self.special_attack_duration:
-                self.is_special_attacking = False
-                self.state = AnimationState.IDLE
-            # Special attack animation could be added here
-        else:
-            if self.is_moving:
-                self.animation_timer += dt
-                if self.animation_timer >= self.animation_speed:
-                    self.animation_timer = 0
-                    self.animation_frame = (self.animation_frame + 1) % 4
-            else:
-                self.state = AnimationState.IDLE
-                self.animation_timer += dt
-                if self.animation_timer >= self.animation_speed * 2:  # Slower idle animation
-                    self.animation_timer = 0
-                    self.animation_frame = (self.animation_frame + 1) % 4
-                    
         # Update damage numbers
         self.damage_numbers = [(dmg, x, y, timer - dt, color) 
                              for dmg, x, y, timer, color in self.damage_numbers 
                              if timer > 0]
+        # Limit the number of damage numbers
+        if len(self.damage_numbers) > self.MAX_DAMAGE_NUMBERS:
+            self.damage_numbers = self.damage_numbers[-self.MAX_DAMAGE_NUMBERS:]
                     
     def take_damage(self, damage, knockback_direction=None):
         """Take damage from an attack and handle knockback"""
         if self.hit_timer > 0:  # Still in invulnerability frames
             return
+            
+        # Reset attack state when taking damage
+        self.current_attack = None
+        self.is_attacking = False
+        self.state = AnimationState.IDLE
             
         # Apply defense reduction
         actual_damage = max(1, damage - self.defense)
@@ -307,8 +471,17 @@ class Player:
             return pygame.Rect(self.rect.x, self.rect.bottom,
                              self.rect.width, self.attack_range)
             
+    def ensure_sprites_loaded(self):
+        """Ensure sprites are loaded before drawing"""
+        if not self.sprites_loaded:
+            self._load_sprites()
+            self.sprites_loaded = True
+            
     def draw(self, screen, camera_x=0, camera_y=0):
         """Draw the player and any effects"""
+        # Ensure sprites are loaded before drawing
+        self.ensure_sprites_loaded()
+        
         sprite_row = self.state.value if not self.is_moving else self.direction.value
         sprite = self.sprite_manager.get_animation_frame('player', 
             sprite_row * 4 + self.animation_frame)
@@ -340,7 +513,7 @@ class Player:
                 screen.blit(text, (x - camera_x, y - y_offset - camera_y))
                 
             # Debug: draw attack hitbox when attacking
-            if self.is_attacking or self.is_special_attacking:
+            if self.is_attacking:
                 hitbox = self._get_attack_hitbox()
                 pygame.draw.rect(screen, (255, 0, 0), 
                                (hitbox.x - camera_x,
