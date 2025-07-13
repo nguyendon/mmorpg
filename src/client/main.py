@@ -278,18 +278,42 @@ class GameClient:
         self.player.update(dt, current_map)
         
         # Check for portal transitions
-        portal_target = self.map_manager.check_portal(self.player.x + PLAYER_SIZE/2, self.player.y + PLAYER_SIZE/2)
-        if portal_target:
-            target_x, target_y = portal_target
-            # Update player position to target coordinates
-            self.player.x = target_x - PLAYER_SIZE/2  # Center player on portal
-            self.player.y = target_y - PLAYER_SIZE/2
-            self.player.rect.x = self.player.x
-            self.player.rect.y = self.player.y
-            # Clear enemies when changing maps
-            self.enemies.clear()
-            # Update enemy spawner to use new map
-            self.enemy_spawner = EnemySpawner(self.map_manager.get_current_map())
+        if not self.map_manager.is_transitioning:
+            portal = self.map_manager.check_portal(
+                self.player.x + PLAYER_SIZE/2, 
+                self.player.y + PLAYER_SIZE/2,
+                PLAYER_SIZE
+            )
+            if portal:
+                # Check for E key press
+                keys = pygame.key.get_pressed()
+                if keys[pygame.K_e]:
+                    self.map_manager.start_transition(portal)
+        
+        # Handle ongoing transition
+        if self.map_manager.is_transitioning:
+            target_pos = self.map_manager.update(dt)  # Returns (x, y) when transition completes
+            if target_pos:
+                target_x, target_y = target_pos
+                
+                # Update player position to target coordinates
+                # Ensure exact pixel alignment by rounding to integers
+                self.player.x = round(target_x - PLAYER_SIZE/2)
+                self.player.y = round(target_y - PLAYER_SIZE/2)
+                self.player.rect.x = self.player.x
+                self.player.rect.y = self.player.y
+                
+                # Reset player state to prevent any movement carrying over
+                self.player.knockback_distance = 0
+                self.player.current_attack = None
+                self.player.is_attacking = False
+                self.player.velocity_x = 0
+                self.player.velocity_y = 0
+                
+                # Clear enemies when changing maps
+                self.enemies.clear()
+                # Update enemy spawner to use new map
+                self.enemy_spawner = EnemySpawner(self.map_manager.get_current_map())
         
         # Update enemies
         for enemy in self.enemies:
@@ -547,6 +571,19 @@ class GameClient:
         
         # Draw status bar
         self.draw_status_bar(self.screen)
+        
+        # Draw portal prompt if near a portal
+        if not self.map_manager.is_transitioning:
+            portal = self.map_manager.check_portal(
+                self.player.x + PLAYER_SIZE/2, 
+                self.player.y + PLAYER_SIZE/2,
+                PLAYER_SIZE
+            )
+            if portal:
+                font = pygame.font.Font(None, 36)
+                prompt = font.render("Press E to enter portal", True, (255, 255, 255))
+                prompt_rect = prompt.get_rect(center=(SCREEN_WIDTH/2, SCREEN_HEIGHT - 100))
+                self.screen.blit(prompt, prompt_rect)
         
         # Draw dialog box if active
         if self.show_dialog:
