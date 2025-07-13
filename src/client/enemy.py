@@ -70,8 +70,87 @@ class Enemy:
         self.damage_number_duration = 1.0  # How long damage numbers stay on screen
         
     def _create_enemy_sprite(self):
-        """Create a more detailed enemy sprite"""
-        # Main body (dark red or custom color)
+        """Create a detailed enemy sprite based on type"""
+        if self.enemy_type == "zombie":
+            self._create_zombie_sprite()
+        else:  # goblin or default
+            self._create_goblin_sprite()
+            
+    def _create_zombie_sprite(self):
+        """Create a zombie-specific sprite"""
+        # Zombie body (sickly green)
+        body_color = self.base_color
+        pygame.draw.rect(self.sprite, body_color,
+                        (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8))
+        
+        # Add decomposing texture
+        for y in range(4, PLAYER_SIZE-8, 3):
+            for x in range(4, PLAYER_SIZE-8, 3):
+                if random.random() < 0.3:  # 30% chance for dark spots
+                    spot_color = tuple(max(c - 50, 0) for c in body_color)
+                    size = random.randint(2, 4)
+                    pygame.draw.circle(self.sprite, spot_color,
+                                    (x, y), size)
+        
+        # Tattered clothes (dark gray)
+        clothes_color = (40, 40, 45)
+        # Ragged shirt
+        points = [
+            (8, 20), (PLAYER_SIZE-8, 20),  # Top
+            (PLAYER_SIZE-8, 35), (8, 35)   # Bottom
+        ]
+        pygame.draw.polygon(self.sprite, clothes_color, points)
+        # Add tears in clothes
+        for _ in range(3):
+            tear_x = random.randint(10, PLAYER_SIZE-10)
+            pygame.draw.line(self.sprite, body_color,
+                           (tear_x, 20), (tear_x+4, 35), 2)
+        
+        # Zombie eyes (one normal, one damaged)
+        # Sunken eye sockets (dark)
+        socket_color = (20, 30, 20)
+        pygame.draw.ellipse(self.sprite, socket_color, (8, 8, 10, 12))
+        pygame.draw.ellipse(self.sprite, socket_color, (PLAYER_SIZE-18, 8, 10, 12))
+        
+        # Good eye (glowing)
+        eye_color = (255, 255, 150)  # Yellowish glow
+        pupil_color = (255, 0, 0)    # Red pupil
+        pygame.draw.ellipse(self.sprite, eye_color, (10, 10, 6, 8))
+        pygame.draw.ellipse(self.sprite, pupil_color, (11, 12, 4, 4))
+        
+        # Damaged eye (scarred)
+        scar_color = tuple(max(c - 30, 0) for c in body_color)
+        # Draw X-shaped scar
+        pygame.draw.line(self.sprite, scar_color,
+                        (PLAYER_SIZE-18, 8), (PLAYER_SIZE-8, 18), 2)
+        pygame.draw.line(self.sprite, scar_color,
+                        (PLAYER_SIZE-18, 18), (PLAYER_SIZE-8, 8), 2)
+        
+        # Mouth (jagged with exposed teeth)
+        teeth_color = (220, 217, 190)  # Off-white
+        mouth_y = 25
+        # Draw teeth
+        for x in range(10, PLAYER_SIZE-10, 4):
+            height = random.randint(3, 6)
+            pygame.draw.rect(self.sprite, teeth_color,
+                           (x, mouth_y, 2, height))
+        
+        # Exposed bones/wounds
+        wound_color = (200, 190, 180)  # Bone color
+        flesh_color = (130, 50, 50)    # Dark red flesh
+        # Random exposed bone patches
+        for _ in range(3):
+            x = random.randint(6, PLAYER_SIZE-12)
+            y = random.randint(15, PLAYER_SIZE-15)
+            size = random.randint(4, 8)
+            # Draw flesh around wound
+            pygame.draw.circle(self.sprite, flesh_color, (x, y), size+2)
+            # Draw exposed bone
+            pygame.draw.circle(self.sprite, wound_color, (x, y), size-1)
+            
+    def _create_goblin_sprite(self):
+        """Create a goblin-specific sprite"""
+        # Main body
         pygame.draw.rect(self.sprite, self.base_color, 
                         (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8))
         
