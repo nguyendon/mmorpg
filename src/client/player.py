@@ -6,6 +6,8 @@ from enum import Enum, auto
 from pathlib import Path
 from ..common.constants import PLAYER_SPEED, PLAYER_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT
 from .sprite_manager import SpriteManager
+from .inventory import Inventory
+from .items import ItemType
 
 class Direction(Enum):
     DOWN = 0
@@ -35,11 +37,12 @@ class Player:
     MAX_DAMAGE_NUMBERS = 50
     MANA_REGEN_RATE = 10  # Mana points per second
     
-    def __init__(self, x, y):
+    def __init__(self, x, y, gender='male'):
         self.x = x
         self.y = y
         self.speed = PLAYER_SPEED
         self.rect = pygame.Rect(x, y, PLAYER_SIZE, PLAYER_SIZE)
+        self.gender = gender
         
         # Character stats
         self.level = 1
@@ -116,17 +119,30 @@ class Player:
         self.crit_chance = 0.2  # 20% chance for critical hit
         self.crit_multiplier = 1.5  # 50% more damage on crit
         
+        # Inventory system
+        self.inventory = Inventory()
+        self.equipment = {
+            'weapon': None,
+            'armor': None,
+            'accessory': None
+        }
+        
+        # Load sprites
+        self._load_sprites()
+
     def _load_sprites(self):
         """Load player sprites from spritesheet."""
-        current_file = Path(__file__).resolve()
-        project_root = current_file.parent.parent.parent
-        sprite_path = project_root / 'src' / 'assets' / 'images' / 'characters' / 'player_full.png'
-        
-        if not sprite_path.exists():
-            print(f"Error: Sprite file not found at {sprite_path}")
-            return
+        if not self.sprites_loaded:
+            current_file = Path(__file__).resolve()
+            project_root = current_file.parent.parent.parent
+            sprite_path = project_root / 'src' / 'assets' / 'images' / 'characters' / f'player_{self.gender}.png'
             
-        self.sprite_manager.load_spritesheet('player', str(sprite_path), PLAYER_SIZE)
+            if not sprite_path.exists():
+                print(f"Error: Sprite file not found at {sprite_path}")
+                return
+                
+            self.sprite_manager.load_spritesheet('player', str(sprite_path), PLAYER_SIZE)
+            self.sprites_loaded = True
         
     def handle_input(self, game_map):
         """Handle keyboard input for player movement and actions."""
@@ -185,7 +201,333 @@ class Player:
             elif keys[pygame.K_u] and self.attack_timers[AttackType.WAVE] <= 0:
                 if self.current_mana >= self.mana_costs[AttackType.WAVE]:
                     self.wave_attack()
+
+    def update(self, dt, game_map=None):
+        """Update player state"""
+        # Regenerate mana
+        self.current_mana = min(self.max_mana, 
+                              self.current_mana + self.MANA_REGEN_RATE * dt)
+        
+        # Update attack timers
+        for attack_type in AttackType:
+            if self.attack_timers[attack_type] > 0:
+                self.attack_timers[attack_type] -= dt
                 
+        # Update current attack
+        if self.current_attack:
+            if self.current_attack == AttackType.DASH:
+                if self.dash_timer > 0:
+                    # Move in dash direction
+                    new_x = self.x + self.dash_direction[0] * self.dash_speed * dt
+                    new_y = self.y + self.dash_direction[1] * self.dash_speed * dt
+                    
+                    # Check if new position is walkable
+                    if game_map and game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
+                        self.x = new_x
+                        self.y = new_y
+                        self.rect.x = new_x
+                        self.rect.y = new_y
+                        
+                        # Create dash effect
+                        if self.particle_system:
+                            self.particle_system.create_hit_effect(
+                                self.rect.centerx, self.rect.centery,
+                                color=(255, 200, 0)  # Golden color for dash
+                            )
+                        
+                        # Check for enemy hits
+                        for enemy in self.current_enemies:
+                            if enemy.is_alive and self.rect.colliderect(enemy.rect):
+                                enemy.take_damage(
+                                    int(self.strength * 1.5),  # 50% more damage
+                                    self.dash_direction,
+                                    DamageType.SPECIAL.value
+                                )
+                    
+                    self.dash_timer -= dt
+                else:
+                    self.current_attack = None
+                    self.state = AnimationState.IDLE
+                    self.is_attacking = False
+            else:
+                # Other attacks end after their animation
+                if self.attack_timers[self.current_attack] <= self.attack_duration:
+                    self.current_attack = None
+                    self.state = AnimationState.IDLE
+                    self.is_attacking = False
+        
+        # Update wave attacks
+        self.update_wave_attacks(dt)
+        
+        # Update other timers and states
+        if self.hit_timer > 0:
+            self.hit_timer -= dt
+            if self.hit_timer <= 0:
+                self.is_hit = False
+                
+        # Handle knockback
+        if self.knockback_distance > 0:
+            move_distance = min(self.knockback_distance, 10 * dt)
+            new_x = self.x + self.knockback_direction[0] * move_distance
+            new_y = self.y + self.knockback_direction[1] * move_distance
+            
+            # Check if new position is walkable
+            if game_map is None or game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
+                self.x = new_x
+                self.y = new_y
+                self.rect.x = new_x
+                self.rect.y = new_y
+            else:
+                # If we hit a wall, stop knockback
+                self.knockback_distance = 0
+            
+            self.knockback_distance -= move_distance
+        
+        # Update damage numbers
+        self.damage_numbers = [(dmg, x, y, timer - dt, color) 
+                             for dmg, x, y, timer, color in self.damage_numbers 
+                             if timer > 0]
+        # Limit the number of damage numbers
+        if len(self.damage_numbers) > self.MAX_DAMAGE_NUMBERS:
+            self.damage_numbers = self.damage_numbers[-self.MAX_DAMAGE_NUMBERS:]
+        
+        # Update animation frame
+        self.animation_timer += dt
+        if self.animation_timer >= self.animation_speed:
+            self.animation_timer = 0
+            self.animation_frame = (self.animation_frame + 1) % 4
+
+    def draw(self, screen, camera_x=0, camera_y=0):
+        """Draw the player and any effects"""
+        # Ensure sprites are loaded before drawing
+        if not self.sprites_loaded:
+            self._load_sprites()
+        
+        sprite_row = self.state.value if not self.is_moving else self.direction.value
+        sprite = self.sprite_manager.get_animation_frame('player', 
+            sprite_row * 4 + self.animation_frame)
+        
+        if sprite:
+            # Draw player shadow
+            shadow_height = 4
+            shadow_surface = pygame.Surface((PLAYER_SIZE, shadow_height), pygame.SRCALPHA)
+            pygame.draw.ellipse(shadow_surface, (0, 0, 0, 128), 
+                              (0, 0, PLAYER_SIZE, shadow_height))
+            screen.blit(shadow_surface, (
+                self.rect.x - camera_x,
+                self.rect.y + PLAYER_SIZE - shadow_height/2 - camera_y
+            ))
+            
+            # Flash white when hit
+            if self.is_hit:
+                white_sprite = sprite.copy()
+                white_sprite.fill((255, 255, 255, 180), special_flags=pygame.BLEND_RGBA_MULT)
+                screen.blit(white_sprite, (
+                    self.rect.x - camera_x,
+                    self.rect.y - camera_y
+                ))
+            else:
+                screen.blit(sprite, (
+                    self.rect.x - camera_x,
+                    self.rect.y - camera_y
+                ))
+            
+            # Draw health bar
+            health_pct = self.current_health / self.max_health
+            bar_width = self.rect.width
+            bar_height = 5
+            bar_x = self.rect.x - camera_x
+            bar_y = self.rect.y - 15 - camera_y
+            
+            # Background (dark gray)
+            pygame.draw.rect(screen, (64, 64, 64),
+                           (bar_x, bar_y, bar_width, bar_height))
+            # Health (green gradient based on health percentage)
+            if health_pct > 0:
+                green = int(255 * health_pct)
+                red = int(255 * (1 - health_pct))
+                health_color = (red, green, 0)
+                pygame.draw.rect(screen, health_color,
+                               (bar_x, bar_y, bar_width * health_pct, bar_height))
+                # Add highlight
+                highlight_height = max(1, int(bar_height * 0.3))
+                pygame.draw.rect(screen, (min(red + 50, 255), min(green + 50, 255), 50),
+                               (bar_x, bar_y, bar_width * health_pct, highlight_height))
+                               
+            # Draw mana bar
+            mana_pct = self.current_mana / self.max_mana
+            mana_bar_y = bar_y - 7  # Position above health bar
+            
+            # Background (dark gray)
+            pygame.draw.rect(screen, (64, 64, 64),
+                           (bar_x, mana_bar_y, bar_width, bar_height))
+            # Mana (blue)
+            if mana_pct > 0:
+                mana_color = (50, 50, 255)
+                pygame.draw.rect(screen, mana_color,
+                               (bar_x, mana_bar_y, bar_width * mana_pct, bar_height))
+                # Add highlight
+                highlight_height = max(1, int(bar_height * 0.3))
+                pygame.draw.rect(screen, (100, 100, 255),
+                               (bar_x, mana_bar_y, bar_width * mana_pct, highlight_height))
+                
+            # Draw damage numbers with colors and effects
+            font = pygame.font.Font(None, 24)  # Slightly larger font
+            for damage, x, y, timer, color in self.damage_numbers:
+                # Float up and fade out with bounce effect
+                progress = (self.damage_number_duration - timer) / self.damage_number_duration
+                y_offset = -30 * progress  # Base upward movement
+                
+                # Add bounce effect
+                bounce = math.sin(progress * math.pi * 2) * 5 * (1 - progress)
+                y_offset += bounce
+                
+                # Scale based on damage (bigger numbers = bigger text)
+                scale = min(1.5, 1 + damage / 50)  # Max 1.5x size for big hits
+                
+                # Fade out
+                alpha = int(255 * (1 - progress))
+                
+                # Render with outline for better visibility
+                text = font.render(str(damage), True, color)
+                text = pygame.transform.scale(text, 
+                    (int(text.get_width() * scale), 
+                     int(text.get_height() * scale)))
+                
+                # Create outline
+                outline = font.render(str(damage), True, (0, 0, 0))
+                outline = pygame.transform.scale(outline, 
+                    (int(outline.get_width() * scale), 
+                     int(outline.get_height() * scale)))
+                
+                # Position for centered text
+                text_x = x - text.get_width()/2 - camera_x
+                text_y = y + y_offset - text.get_height()/2 - camera_y
+                
+                # Draw outline then text
+                for dx, dy in [(-1,-1), (-1,1), (1,-1), (1,1)]:
+                    outline.set_alpha(alpha)
+                    screen.blit(outline, (text_x + dx, text_y + dy))
+                text.set_alpha(alpha)
+                screen.blit(text, (text_x, text_y))
+                
+            # Debug: draw attack hitbox when attacking
+            if self.is_attacking and self.current_attack:
+                hitbox = self._get_attack_hitbox()
+                # Draw attack effect
+                attack_surface = pygame.Surface((hitbox.width, hitbox.height), pygame.SRCALPHA)
+                if self.current_attack == AttackType.SLASH:
+                    pygame.draw.rect(attack_surface, (255, 255, 255, 50), 
+                                   (0, 0, hitbox.width, hitbox.height))
+                elif self.current_attack == AttackType.SPIN:
+                    pygame.draw.circle(attack_surface, (255, 255, 0, 50),
+                                    (hitbox.width/2, hitbox.height/2),
+                                    max(hitbox.width, hitbox.height)/2)
+                elif self.current_attack == AttackType.WAVE:
+                    pygame.draw.rect(attack_surface, (0, 255, 255, 50),
+                                   (0, 0, hitbox.width, hitbox.height))
+                screen.blit(attack_surface, (hitbox.x - camera_x, hitbox.y - camera_y))
+        else:
+            # Fallback to rectangle if sprite loading failed
+            draw_rect = pygame.Rect(
+                self.rect.x - camera_x,
+                self.rect.y - camera_y,
+                self.rect.width,
+                self.rect.height
+            )
+            pygame.draw.rect(screen, (255, 0, 0), draw_rect)
+            
+    def get_position(self):
+        """Return the current position as a tuple."""
+        return (self.x, self.y)
+        
+    def pickup_item(self, item):
+        """Try to pick up an item"""
+        return self.inventory.add_item(item)
+        
+    def use_item(self, item_index):
+        """Use an item from inventory"""
+        item = self.inventory.get_item(item_index)
+        if not item:
+            return False
+            
+        if item.item_type == ItemType.POTION:
+            # Handle potion effects
+            if 'heal' in item.stats:
+                self.current_health = min(self.max_health, 
+                                       self.current_health + item.stats['heal'])
+                self.inventory.remove_item(item_index)
+                return True
+            elif 'mana' in item.stats:
+                self.current_mana = min(self.max_mana, 
+                                    self.current_mana + item.stats['mana'])
+                self.inventory.remove_item(item_index)
+                return True
+        
+        return False
+        
+    def equip_item(self, item_index):
+        """Equip an item from inventory"""
+        item = self.inventory.get_item(item_index)
+        if not item:
+            return False
+            
+        if item.item_type == ItemType.WEAPON:
+            # Unequip current weapon if any
+            if self.equipment['weapon']:
+                self.inventory.add_item(self.equipment['weapon'])
+            self.equipment['weapon'] = self.inventory.remove_item(item_index)
+            # Update stats
+            self.update_equipment_stats()
+            return True
+            
+        elif item.item_type == ItemType.ARMOR:
+            # Unequip current armor if any
+            if self.equipment['armor']:
+                self.inventory.add_item(self.equipment['armor'])
+            self.equipment['armor'] = self.inventory.remove_item(item_index)
+            # Update stats
+            self.update_equipment_stats()
+            return True
+            
+        return False
+        
+    def update_equipment_stats(self):
+        """Update player stats based on equipped items"""
+        # Reset to base stats
+        self.strength = 10
+        self.defense = 5
+        
+        # Add equipment bonuses
+        for item in self.equipment.values():
+            if item:
+                if 'damage' in item.stats:
+                    self.strength += item.stats['damage']
+                if 'defense' in item.stats:
+                    self.defense += item.stats['defense']
+                if 'speed' in item.stats:
+                    self.speed += item.stats['speed']
+                if 'magic' in item.stats:
+                    # Could add magic damage bonus
+                    pass
+                if 'mana_regen' in item.stats:
+                    self.MANA_REGEN_RATE += item.stats['mana_regen']
+                    
+    def _get_attack_hitbox(self):
+        """Get the attack hitbox based on player direction"""
+        if self.direction == Direction.LEFT:
+            return pygame.Rect(self.rect.x - self.attack_range, self.rect.y,
+                             self.attack_range, self.rect.height)
+        elif self.direction == Direction.RIGHT:
+            return pygame.Rect(self.rect.right, self.rect.y,
+                             self.attack_range, self.rect.height)
+        elif self.direction == Direction.UP:
+            return pygame.Rect(self.rect.x, self.rect.y - self.attack_range,
+                             self.rect.width, self.attack_range)
+        else:  # Direction.DOWN
+            return pygame.Rect(self.rect.x, self.rect.bottom,
+                             self.rect.width, self.attack_range)
+                             
     def slash_attack(self):
         """Basic melee attack"""
         self.current_attack = AttackType.SLASH
@@ -355,294 +697,3 @@ class Player:
             wave['lifetime'] -= dt
             if wave['lifetime'] <= 0:
                 self.waves.remove(wave)
-
-    def update(self, dt, game_map=None):
-        """Update player state"""
-        # Regenerate mana
-        self.current_mana = min(self.max_mana, 
-                              self.current_mana + self.MANA_REGEN_RATE * dt)
-        
-        # Update attack timers
-        for attack_type in AttackType:
-            if self.attack_timers[attack_type] > 0:
-                self.attack_timers[attack_type] -= dt
-                
-        # Update current attack
-        if self.current_attack:
-            if self.current_attack == AttackType.DASH:
-                if self.dash_timer > 0:
-                    # Move in dash direction
-                    new_x = self.x + self.dash_direction[0] * self.dash_speed * dt
-                    new_y = self.y + self.dash_direction[1] * self.dash_speed * dt
-                    
-                    # Check if new position is walkable
-                    if game_map and game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
-                        self.x = new_x
-                        self.y = new_y
-                        self.rect.x = new_x
-                        self.rect.y = new_y
-                        
-                        # Create dash effect
-                        if self.particle_system:
-                            self.particle_system.create_hit_effect(
-                                self.rect.centerx, self.rect.centery,
-                                color=(255, 200, 0)  # Golden color for dash
-                            )
-                        
-                        # Check for enemy hits
-                        for enemy in self.current_enemies:
-                            if enemy.is_alive and self.rect.colliderect(enemy.rect):
-                                enemy.take_damage(
-                                    int(self.strength * 1.5),  # 50% more damage
-                                    self.dash_direction,
-                                    DamageType.SPECIAL.value
-                                )
-                    
-                    self.dash_timer -= dt
-                else:
-                    self.current_attack = None
-                    self.state = AnimationState.IDLE
-                    self.is_attacking = False
-            else:
-                # Other attacks end after their animation
-                if self.attack_timers[self.current_attack] <= self.attack_duration:
-                    self.current_attack = None
-                    self.state = AnimationState.IDLE
-                    self.is_attacking = False
-        
-        # Update wave attacks
-        self.update_wave_attacks(dt)
-        
-        # Update other timers and states
-        if self.hit_timer > 0:
-            self.hit_timer -= dt
-            if self.hit_timer <= 0:
-                self.is_hit = False
-                
-        # Handle knockback
-        if self.knockback_distance > 0:
-            move_distance = min(self.knockback_distance, 10 * dt)
-            new_x = self.x + self.knockback_direction[0] * move_distance
-            new_y = self.y + self.knockback_direction[1] * move_distance
-            
-            # Check if new position is walkable
-            if game_map is None or game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
-                self.x = new_x
-                self.y = new_y
-                self.rect.x = new_x
-                self.rect.y = new_y
-            else:
-                # If we hit a wall, stop knockback
-                self.knockback_distance = 0
-            
-            self.knockback_distance -= move_distance
-        
-        # Update damage numbers
-        self.damage_numbers = [(dmg, x, y, timer - dt, color) 
-                             for dmg, x, y, timer, color in self.damage_numbers 
-                             if timer > 0]
-        # Limit the number of damage numbers
-        if len(self.damage_numbers) > self.MAX_DAMAGE_NUMBERS:
-            self.damage_numbers = self.damage_numbers[-self.MAX_DAMAGE_NUMBERS:]
-                    
-    def take_damage(self, damage, knockback_direction=None):
-        """Take damage from an attack and handle knockback"""
-        if self.hit_timer > 0:  # Still in invulnerability frames
-            return
-            
-        # Reset attack state when taking damage
-        self.current_attack = None
-        self.is_attacking = False
-        self.state = AnimationState.IDLE
-            
-        # Apply defense reduction with some randomness
-        defense_multiplier = random.uniform(0.8, 1.2)  # +/- 20% defense variation
-        actual_damage = max(1, int(damage - self.defense * defense_multiplier))
-        self.current_health -= actual_damage
-        
-        # Add damage number with enhanced visibility
-        self.damage_numbers.append((
-            actual_damage,
-            self.x + random.randint(-10, 10),
-            self.y - 20,
-            self.damage_number_duration,
-            (255, 50, 50)  # Red color for damage taken
-        ))
-        
-        # Apply knockback with increased effect when health is low
-        if knockback_direction:
-            health_factor = 1 + (1 - self.current_health / self.max_health)  # Up to 2x at low health
-            self.knockback_distance = 30 * health_factor
-            self.knockback_direction = knockback_direction
-        
-        self.is_hit = True
-        self.hit_timer = self.hit_cooldown * 0.75  # Reduced invulnerability time
-        
-        # Check if dead
-        if self.current_health <= 0:
-            self.current_health = 0
-            # Handle death (could add game over screen here)
-            
-    def _get_attack_hitbox(self):
-        """Get the attack hitbox based on player direction"""
-        if self.direction == Direction.LEFT:
-            return pygame.Rect(self.rect.x - self.attack_range, self.rect.y,
-                             self.attack_range, self.rect.height)
-        elif self.direction == Direction.RIGHT:
-            return pygame.Rect(self.rect.right, self.rect.y,
-                             self.attack_range, self.rect.height)
-        elif self.direction == Direction.UP:
-            return pygame.Rect(self.rect.x, self.rect.y - self.attack_range,
-                             self.rect.width, self.attack_range)
-        else:  # Direction.DOWN
-            return pygame.Rect(self.rect.x, self.rect.bottom,
-                             self.rect.width, self.attack_range)
-            
-    def ensure_sprites_loaded(self):
-        """Ensure sprites are loaded before drawing"""
-        if not self.sprites_loaded:
-            self._load_sprites()
-            self.sprites_loaded = True
-            
-    def draw(self, screen, camera_x=0, camera_y=0):
-        """Draw the player and any effects"""
-        # Ensure sprites are loaded before drawing
-        self.ensure_sprites_loaded()
-        
-        sprite_row = self.state.value if not self.is_moving else self.direction.value
-        sprite = self.sprite_manager.get_animation_frame('player', 
-            sprite_row * 4 + self.animation_frame)
-        
-        if sprite:
-            # Draw player shadow
-            shadow_height = 4
-            shadow_surface = pygame.Surface((PLAYER_SIZE, shadow_height), pygame.SRCALPHA)
-            pygame.draw.ellipse(shadow_surface, (0, 0, 0, 128), 
-                              (0, 0, PLAYER_SIZE, shadow_height))
-            screen.blit(shadow_surface, (
-                self.rect.x - camera_x,
-                self.rect.y + PLAYER_SIZE - shadow_height/2 - camera_y
-            ))
-            
-            # Flash white when hit
-            if self.is_hit:
-                white_sprite = sprite.copy()
-                white_sprite.fill((255, 255, 255, 180), special_flags=pygame.BLEND_RGBA_MULT)
-                screen.blit(white_sprite, (
-                    self.rect.x - camera_x,
-                    self.rect.y - camera_y
-                ))
-            else:
-                screen.blit(sprite, (
-                    self.rect.x - camera_x,
-                    self.rect.y - camera_y
-                ))
-            
-            # Draw health bar
-            health_pct = self.current_health / self.max_health
-            bar_width = self.rect.width
-            bar_height = 5
-            bar_x = self.rect.x - camera_x
-            bar_y = self.rect.y - 15 - camera_y
-            
-            # Background (dark gray)
-            pygame.draw.rect(screen, (64, 64, 64),
-                           (bar_x, bar_y, bar_width, bar_height))
-            # Health (green gradient based on health percentage)
-            if health_pct > 0:
-                green = int(255 * health_pct)
-                red = int(255 * (1 - health_pct))
-                health_color = (red, green, 0)
-                pygame.draw.rect(screen, health_color,
-                               (bar_x, bar_y, bar_width * health_pct, bar_height))
-                # Add highlight
-                highlight_height = max(1, int(bar_height * 0.3))
-                pygame.draw.rect(screen, (min(red + 50, 255), min(green + 50, 255), 50),
-                               (bar_x, bar_y, bar_width * health_pct, highlight_height))
-                               
-            # Draw mana bar
-            mana_pct = self.current_mana / self.max_mana
-            mana_bar_y = bar_y - 7  # Position above health bar
-            
-            # Background (dark gray)
-            pygame.draw.rect(screen, (64, 64, 64),
-                           (bar_x, mana_bar_y, bar_width, bar_height))
-            # Mana (blue)
-            if mana_pct > 0:
-                mana_color = (50, 50, 255)
-                pygame.draw.rect(screen, mana_color,
-                               (bar_x, mana_bar_y, bar_width * mana_pct, bar_height))
-                # Add highlight
-                highlight_height = max(1, int(bar_height * 0.3))
-                pygame.draw.rect(screen, (100, 100, 255),
-                               (bar_x, mana_bar_y, bar_width * mana_pct, highlight_height))
-                
-            # Draw damage numbers with colors and effects
-            font = pygame.font.Font(None, 24)  # Slightly larger font
-            for damage, x, y, timer, color in self.damage_numbers:
-                # Float up and fade out with bounce effect
-                progress = (self.damage_number_duration - timer) / self.damage_number_duration
-                y_offset = -30 * progress  # Base upward movement
-                
-                # Add bounce effect
-                bounce = math.sin(progress * math.pi * 2) * 5 * (1 - progress)
-                y_offset += bounce
-                
-                # Scale based on damage (bigger numbers = bigger text)
-                scale = min(1.5, 1 + damage / 50)  # Max 1.5x size for big hits
-                
-                # Fade out
-                alpha = int(255 * (1 - progress))
-                
-                # Render with outline for better visibility
-                text = font.render(str(damage), True, color)
-                text = pygame.transform.scale(text, 
-                    (int(text.get_width() * scale), 
-                     int(text.get_height() * scale)))
-                
-                # Create outline
-                outline = font.render(str(damage), True, (0, 0, 0))
-                outline = pygame.transform.scale(outline, 
-                    (int(outline.get_width() * scale), 
-                     int(outline.get_height() * scale)))
-                
-                # Position for centered text
-                text_x = x - text.get_width()/2 - camera_x
-                text_y = y + y_offset - text.get_height()/2 - camera_y
-                
-                # Draw outline then text
-                for dx, dy in [(-1,-1), (-1,1), (1,-1), (1,1)]:
-                    outline.set_alpha(alpha)
-                    screen.blit(outline, (text_x + dx, text_y + dy))
-                text.set_alpha(alpha)
-                screen.blit(text, (text_x, text_y))
-                
-            # Debug: draw attack hitbox when attacking
-            if self.is_attacking and self.current_attack:
-                hitbox = self._get_attack_hitbox()
-                # Draw attack effect
-                attack_surface = pygame.Surface((hitbox.width, hitbox.height), pygame.SRCALPHA)
-                if self.current_attack == AttackType.SLASH:
-                    pygame.draw.rect(attack_surface, (255, 255, 255, 50), 
-                                   (0, 0, hitbox.width, hitbox.height))
-                elif self.current_attack == AttackType.SPIN:
-                    pygame.draw.circle(attack_surface, (255, 255, 0, 50),
-                                    (hitbox.width/2, hitbox.height/2),
-                                    max(hitbox.width, hitbox.height)/2)
-                elif self.current_attack == AttackType.WAVE:
-                    pygame.draw.rect(attack_surface, (0, 255, 255, 50),
-                                   (0, 0, hitbox.width, hitbox.height))
-                screen.blit(attack_surface, (hitbox.x - camera_x, hitbox.y - camera_y))
-        else:
-            # Fallback to rectangle if sprite loading failed
-            draw_rect = pygame.Rect(
-                self.rect.x - camera_x,
-                self.rect.y - camera_y,
-                self.rect.width,
-                self.rect.height
-            )
-            pygame.draw.rect(screen, (255, 0, 0), draw_rect)
-            
-    def get_position(self):
-        """Return the current position as a tuple."""
-        return (self.x, self.y)
