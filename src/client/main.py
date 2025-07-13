@@ -257,11 +257,12 @@ class GameClient:
         self.player.update(dt, current_map)
         
         # Check for portal transitions
-        portal_target = self.map_manager.check_portal(self.player.x, self.player.y)
+        portal_target = self.map_manager.check_portal(self.player.x + PLAYER_SIZE/2, self.player.y + PLAYER_SIZE/2)
         if portal_target:
             target_x, target_y = portal_target
-            self.player.x = target_x
-            self.player.y = target_y
+            # Update player position to target coordinates
+            self.player.x = target_x - PLAYER_SIZE/2  # Center player on portal
+            self.player.y = target_y - PLAYER_SIZE/2
             self.player.rect.x = self.player.x
             self.player.rect.y = self.player.y
             # Clear enemies when changing maps
@@ -284,10 +285,22 @@ class GameClient:
                         enemy.x + PLAYER_SIZE/2,
                         enemy.y + PLAYER_SIZE/2
                     )
-                if random.random() < 0.3:  # 30% chance
-                    potion_type = "greater_health_potion" if random.random() < 0.3 else "health_potion"
-                    item = Item(enemy.x, enemy.y, potion_type)
-                    self.items.append(item)
+                if random.random() < 0.3:  # 30% chance for item drop
+                    # 20% chance for gun, 80% chance for potion
+                    if random.random() < 0.2:
+                        item = Item("Pistol", ItemType.GUN, "A basic ranged weapon", "pistol.png", {
+                            "damage": 15,
+                            "range": 300,
+                            "cooldown": 0.5,
+                            "projectile_speed": 500
+                        })
+                    else:
+                        potion_type = "greater_health_potion" if random.random() < 0.3 else "health_potion"
+                        item = Item("Health Potion", ItemType.POTION, "Restores HP", "potion.png", {
+                            "heal": 60 if potion_type == "greater_health_potion" else 30
+                        })
+                    item_drop = ItemDrop(item, enemy.x, enemy.y)
+                    self.items.append(item_drop)
                 self.enemies.remove(enemy)
                 
         # Update items and check for pickups
@@ -298,17 +311,28 @@ class GameClient:
             distance = (dx * dx + dy * dy) ** 0.5
             
             if distance <= item.pickup_range:
-                self.player.current_health = min(
-                    self.player.max_health,
-                    self.player.current_health + item.heal_amount
-                )
-                if self.particle_system:
-                    self.particle_system.create_hit_effect(
-                        self.player.rect.centerx,
-                        self.player.rect.centery,
-                        color=(0, 255, 0)
+                if item.item.item_type == ItemType.POTION:
+                    self.player.current_health = min(
+                        self.player.max_health,
+                        self.player.current_health + item.item.stats['heal']
                     )
-                self.items.remove(item)
+                    if self.particle_system:
+                        self.particle_system.create_hit_effect(
+                            self.player.rect.centerx,
+                            self.player.rect.centery,
+                            color=(0, 255, 0)
+                        )
+                    self.items.remove(item)
+                else:
+                    # Add non-potion items to inventory
+                    if self.player.pickup_item(item.item):
+                        if self.particle_system:
+                            self.particle_system.create_hit_effect(
+                                self.player.rect.centerx,
+                                self.player.rect.centery,
+                                color=(255, 255, 0)  # Gold color for items
+                            )
+                        self.items.remove(item)
         
         # Try to spawn new enemy
         if new_enemy := self.enemy_spawner.update(dt, self.player, self.enemies):

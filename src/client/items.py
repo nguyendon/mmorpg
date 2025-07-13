@@ -8,6 +8,30 @@ class ItemType(Enum):
     POTION = auto()
     MATERIAL = auto()
     QUEST = auto()
+    GUN = auto()  # Add gun type
+
+# Define some standard items
+ITEM_TEMPLATES = {
+    "health_potion": {
+        "name": "Health Potion",
+        "type": ItemType.POTION,
+        "description": "Restores 30 HP",
+        "icon_name": "health_potion.png",
+        "stats": {"heal": 30}
+    },
+    "pistol": {
+        "name": "Pistol",
+        "type": ItemType.GUN,
+        "description": "A basic ranged weapon",
+        "icon_name": "pistol.png",
+        "stats": {
+            "damage": 15,
+            "range": 300,
+            "cooldown": 0.5,
+            "projectile_speed": 500
+        }
+    }
+}
 
 class Item:
     def __init__(self, name, item_type, description, icon_name, stats=None):

@@ -93,6 +93,11 @@ class Player:
             AttackType.WAVE: 40     # Wave attack costs 40 mana
         }
         
+        # Gun properties
+        self.gun = None
+        self.gun_cooldown = 0
+        self.projectiles = []
+        
         # Dash attack properties
         self.dash_speed = 500
         self.dash_duration = 0.2
@@ -219,9 +224,21 @@ class Player:
             elif keys[pygame.K_u] and self.attack_timers[AttackType.WAVE] <= 0:
                 if self.current_mana >= self.mana_costs[AttackType.WAVE]:
                     self.wave_attack()
+            elif keys[pygame.K_SPACE] and self.gun and self.gun_cooldown <= 0:
+                self.shoot()
 
     def update(self, dt, game_map=None):
         """Update player state"""
+        # Update gun cooldown
+        if self.gun_cooldown > 0:
+            self.gun_cooldown -= dt
+            
+        # Update projectiles
+        for projectile in self.projectiles[:]:
+            projectile.update(dt, game_map, self.current_enemies)
+            if not projectile.alive:
+                self.projectiles.remove(projectile)
+                
         # Regenerate mana
         self.current_mana = min(self.max_mana, 
                               self.current_mana + self.MANA_REGEN_RATE * dt)
@@ -318,6 +335,10 @@ class Player:
 
     def draw(self, screen, camera_x=0, camera_y=0):
         """Draw the player and any effects"""
+        # Draw projectiles
+        for projectile in self.projectiles:
+            projectile.draw(screen, camera_x, camera_y)
+            
         # Ensure sprites are loaded before drawing
         if not self.sprites_loaded:
             self._load_sprites()
@@ -470,7 +491,52 @@ class Player:
             self.update_equipment_stats()
             return True
             
+        elif item.item_type == ItemType.GUN:
+            # Unequip current gun if any
+            if self.equipment['gun']:
+                self.inventory.add_item(self.equipment['gun'])
+            self.equipment['gun'] = self.inventory.remove_item(item_index)
+            self.gun = item  # Store reference to gun for easy access
+            return True
+            
         return False
+        
+    def shoot(self):
+        """Fire the equipped gun"""
+        if not self.gun or self.gun_cooldown > 0:
+            return
+            
+        # Get direction based on player facing
+        if self.direction == Direction.LEFT:
+            direction = (-1, 0)
+        elif self.direction == Direction.RIGHT:
+            direction = (1, 0)
+        elif self.direction == Direction.UP:
+            direction = (0, -1)
+        else:  # Direction.DOWN
+            direction = (0, 1)
+            
+        # Create new projectile
+        from .projectile import Projectile
+        projectile = Projectile(
+            self.rect.centerx,
+            self.rect.centery,
+            direction,
+            self.gun.stats['projectile_speed'],
+            self.gun.stats['damage'],
+            self.gun.stats['range']
+        )
+        
+        self.projectiles.append(projectile)
+        self.gun_cooldown = self.gun.stats['cooldown']
+        
+        # Create muzzle flash effect
+        if self.particle_system:
+            self.particle_system.create_hit_effect(
+                self.rect.centerx + direction[0] * 20,
+                self.rect.centery + direction[1] * 20,
+                color=(255, 255, 0)
+            )
         
     def gain_xp(self, amount):
         """Add XP and check for level up"""

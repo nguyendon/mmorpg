@@ -11,18 +11,18 @@ class Enemy:
             "health": 50,
             "strength": 8,
             "defense": 3,
-            "speed": 2,
+            "speed": 100,  # Increased speed
             "attack_range": 50,
-            "aggro_range": 200,
+            "aggro_range": 300,  # Increased range
             "exp_value": 10
         },
         "zombie": {
             "health": 75,
             "strength": 12,
             "defense": 2,
-            "speed": 1,
+            "speed": 80,  # Increased speed
             "attack_range": 40,
-            "aggro_range": 250,
+            "aggro_range": 350,  # Increased range
             "exp_value": 15
         }
     }
@@ -63,6 +63,18 @@ class Enemy:
         self.is_hit = False
         self.knockback_distance = 0
         self.knockback_direction = (0, 0)
+        
+        # Aggro state
+        self.is_aggroed = False
+        self.aggro_duration = 10.0  # How long to chase player after losing sight
+        self.aggro_timer = 0
+        self.last_seen_pos = None  # Last known player position
+        
+        # Pathfinding state
+        self.stuck_timer = 0
+        self.stuck_threshold = 0.5  # Time before considering enemy stuck
+        self.last_position = (x, y)
+        self.stuck_cooldown = 0
         
         # Load sprite sheet
         self.sprites = {}
@@ -187,45 +199,135 @@ class Enemy:
             # Normal movement and combat
             dist_to_player = math.sqrt((player.x - self.x)**2 + (player.y - self.y)**2)
             
-            # If player is in aggro range, move toward them
-            if dist_to_player < self.aggro_range:
+            # Check if player is in line of sight (simple raycast)
+            has_line_of_sight = self._check_line_of_sight(player, game_map)
+            
+            # Update aggro state
+            if dist_to_player < self.aggro_range and has_line_of_sight:
+                self.is_aggroed = True
+                self.aggro_timer = self.aggro_duration
+                self.last_seen_pos = (player.x, player.y)
+            elif self.is_aggroed:
+                self.aggro_timer -= dt
+                if self.aggro_timer <= 0:
+                    self.is_aggroed = False
+                    self.last_seen_pos = None
+            
+            # Movement logic
+            if self.is_aggroed:
                 # Update facing direction
                 self.facing_left = player.x < self.x
                 
                 if dist_to_player > self.attack_range:  # Only move if not in attack range
-                    # Calculate direction to player
-                    dx = player.x - self.x
-                    dy = player.y - self.y
+                    # Calculate direction to target (either player or last seen position)
+                    target_x = player.x if has_line_of_sight else self.last_seen_pos[0]
+                    target_y = player.y if has_line_of_sight else self.last_seen_pos[1]
+                    
+                    dx = target_x - self.x
+                    dy = target_y - self.y
                     length = math.sqrt(dx**2 + dy**2)
                     if length > 0:
                         dx = dx / length
                         dy = dy / length
                         
-                        # Move toward player
-                        new_x = self.x + dx * self.speed
-                        new_y = self.y + dy * self.speed
+                        # Check if stuck
+                        current_pos = (self.x, self.y)
+                        if (abs(current_pos[0] - self.last_position[0]) < 1 and
+                            abs(current_pos[1] - self.last_position[1]) < 1):
+                            self.stuck_timer += dt
+                        else:
+                            self.stuck_timer = 0
+                            self.last_position = current_pos
                         
-                        # Check collision with map
-                        if game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
-                            self.x = new_x
-                            self.y = new_y
-                            self.rect.x = new_x
-                            self.rect.y = new_y
+                        # If stuck, try alternative movement patterns
+                        if self.stuck_timer >= self.stuck_threshold and self.stuck_cooldown <= 0:
+                            # Try moving perpendicular to the stuck direction
+                            attempted_moves = [
+                                (-dy, dx),  # 90 degrees right
+                                (dy, -dx),  # 90 degrees left
+                                (-dx, -dy), # Backwards
+                                (dx, 0),    # Horizontal only
+                                (0, dy)     # Vertical only
+                            ]
+                            self.stuck_cooldown = 1.0  # Wait before trying again
+                        else:
+                            # Normal movement patterns
+                            attempted_moves = [
+                                (dx, dy),  # Try direct path first
+                                (dx, 0),   # Try horizontal movement
+                                (0, dy),   # Try vertical movement
+                                (-dy, dx), # Try perpendicular movement (right)
+                                (dy, -dx)  # Try perpendicular movement (left)
+                            ]
+                        
+                        # Update stuck cooldown
+                        if self.stuck_cooldown > 0:
+                            self.stuck_cooldown -= dt
+                        
+                        # Try each movement pattern
+                        moved = False
+                        for move_dx, move_dy in attempted_moves:
+                            # Scale movement by speed and time
+                            new_x = self.x + move_dx * self.speed * dt
+                            new_y = self.y + move_dy * self.speed * dt
                             
-                            # Update animation
+                            # Check if new position is walkable
+                            if game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
+                                # Move to new position
+                                self.x = new_x
+                                self.y = new_y
+                                self.rect.x = new_x
+                                self.rect.y = new_y
+                                moved = True
+                                break
+                        
+                        # Update animation if we moved
+                        if moved:
                             self.animation_timer += dt
                             if self.animation_timer >= self.animation_speed:
                                 self.animation_timer = 0
                                 self.animation_frame = (self.animation_frame + 1) % len(self.sprites['walk'])
                 
                 # Attack if in range and cooldown is ready
-                if dist_to_player <= self.attack_range and self.attack_timer <= 0:
+                if dist_to_player <= self.attack_range and self.attack_timer <= 0 and has_line_of_sight:
                     self.attack(player)
                     
         # Update damage numbers
         self.damage_numbers = [(dmg, x, y, timer - dt, color) 
                              for dmg, x, y, timer, color in self.damage_numbers 
                              if timer > 0]
+                             
+    def _check_line_of_sight(self, player, game_map):
+        """Check if there's a clear line of sight to the player"""
+        # Get start and end points
+        start_x = self.x + PLAYER_SIZE/2
+        start_y = self.y + PLAYER_SIZE/2
+        end_x = player.x + PLAYER_SIZE/2
+        end_y = player.y + PLAYER_SIZE/2
+        
+        # Calculate direction and distance
+        dx = end_x - start_x
+        dy = end_y - start_y
+        distance = math.sqrt(dx*dx + dy*dy)
+        
+        if distance == 0:
+            return True
+            
+        # Normalize direction
+        dx = dx / distance
+        dy = dy / distance
+        
+        # Check points along the line
+        steps = int(distance / (PLAYER_SIZE/2))  # Check every half player size
+        for i in range(steps):
+            check_x = start_x + dx * i * (PLAYER_SIZE/2)
+            check_y = start_y + dy * i * (PLAYER_SIZE/2)
+            
+            # If any point is not walkable, there's no line of sight
+            if not game_map.is_walkable(check_x, check_y):
+                return False
+                
+        return True
     
     def take_damage(self, damage, knockback_direction=None, damage_color=(255, 255, 255), player=None):
         """Take damage and handle knockback"""
