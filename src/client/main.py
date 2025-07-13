@@ -6,7 +6,7 @@ from .map import GameMap
 from .map_manager import MapManager
 from .ui import UI
 from .enemy import Enemy
-from .item import Item
+from .item import Item, ItemType, ItemDrop
 from .particle_system import ParticleSystem
 from .enemy_spawner import EnemySpawner
 from .npc_spawner import NPCSpawner
