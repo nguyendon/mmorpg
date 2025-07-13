@@ -5,6 +5,7 @@ import random
 from enum import Enum, auto
 from pathlib import Path
 from ..common.constants import PLAYER_SPEED, PLAYER_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT
+from ..common.tiles import Tile, TileType
 from .sprite_manager import SpriteManager
 from .inventory import Inventory
 from .items import ItemType
@@ -258,7 +259,8 @@ class Player:
                                 enemy.take_damage(
                                     int(self.strength * 1.5),  # 50% more damage
                                     self.dash_direction,
-                                    DamageType.SPECIAL.value
+                                    DamageType.SPECIAL.value,
+                                    self
                                 )
                     
                     self.dash_timer -= dt
@@ -647,7 +649,7 @@ class Player:
                 damage_type = DamageType.CRITICAL if is_crit else DamageType.NORMAL
                 
                 # Deal damage
-                enemy.take_damage(int(damage), knockback_direction, damage_type.value)
+                enemy.take_damage(int(damage), knockback_direction, damage_type.value, self)
 
     def spin_attack(self):
         """360-degree spinning attack"""
@@ -679,7 +681,8 @@ class Player:
                     enemy.take_damage(
                         int(self.strength * 1.2),  # 20% more damage
                         knockback_direction,
-                        DamageType.SPECIAL.value
+                        DamageType.SPECIAL.value,
+                        self
                     )
 
     def dash_attack(self):
@@ -801,7 +804,8 @@ class Player:
                     enemy.take_damage(
                         int(self.strength * 0.8),  # 80% normal damage
                         knockback_direction,
-                        DamageType.SPECIAL.value
+                        DamageType.SPECIAL.value,
+                        self
                     )
                     
                     # Mark enemy as hit by this wave

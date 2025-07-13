@@ -227,7 +227,7 @@ class Enemy:
                              for dmg, x, y, timer, color in self.damage_numbers 
                              if timer > 0]
     
-    def take_damage(self, damage, knockback_direction=None, damage_color=(255, 255, 255)):
+    def take_damage(self, damage, knockback_direction=None, damage_color=(255, 255, 255), player=None):
         """Take damage and handle knockback"""
         if not self.is_alive or self.hit_timer > 0:
             return
@@ -258,7 +258,7 @@ class Enemy:
             self.current_health = 0
             self.is_alive = False
             # Grant XP to player when defeated
-            if hasattr(player, 'gain_xp'):
+            if player and hasattr(player, 'gain_xp'):
                 scaled_xp = int(self.exp_value * (1 + (self.level - 1) * 0.1))  # 10% more XP per level
                 player.gain_xp(scaled_xp)
             
