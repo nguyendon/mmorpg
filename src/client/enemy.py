@@ -61,7 +61,7 @@ class Enemy:
         self.knockback_distance = 0
         self.knockback_direction = (0, 0)
         
-        # Create a more detailed enemy appearance
+        # Create sprite
         self.sprite = pygame.Surface((PLAYER_SIZE, PLAYER_SIZE), pygame.SRCALPHA)
         self._create_enemy_sprite()  # Default color will be used
         

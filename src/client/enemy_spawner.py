@@ -49,45 +49,6 @@ class EnemySpawner:
         
     def _create_enemy(self, x, y):
         """Create a random enemy type at the given position"""
-        enemy_types = [
-            {
-                'type': 'goblin',
-                'health': 50,
-                'strength': 8,
-                'defense': 3,
-                'speed': 2,
-                'color': (150, 0, 0)  # Red goblin
-            },
-            {
-                'type': 'ogre',
-                'health': 100,
-                'strength': 15,
-                'defense': 5,
-                'speed': 1,
-                'color': (100, 50, 0)  # Brown ogre
-            },
-            {
-                'type': 'speeder',
-                'health': 30,
-                'strength': 5,
-                'defense': 1,
-                'speed': 4,
-                'color': (200, 0, 0)  # Bright red speeder
-            }
-        ]
-        
-        enemy_type = random.choice(enemy_types)
-        enemy = Enemy(x, y, enemy_type['type'])
-        
-        # Customize enemy stats
-        enemy.max_health = enemy_type['health']
-        enemy.current_health = enemy.max_health
-        enemy.strength = enemy_type['strength']
-        enemy.defense = enemy_type['defense']
-        enemy.speed = enemy_type['speed']
-        
-        # Create custom sprite for this enemy type
-        enemy.sprite.fill((0, 0, 0, 0))  # Clear sprite
-        enemy._create_enemy_sprite(enemy_type['color'])
-        
+        enemy_type = random.choice(["goblin", "zombie"])
+        enemy = Enemy(x, y, enemy_type)
         return enemy
