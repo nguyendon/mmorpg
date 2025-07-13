@@ -1,55 +1,58 @@
 import pygame
-import os
 
 class SpriteManager:
     def __init__(self):
-        self.sprites = {}
-        self.animations = {}
+        self.sprites = {}  # Dictionary to store individual sprites
+        self.spritesheets = {}  # Dictionary to store sprite sheets
         
-    def load_sprite(self, name, path, scale=1):
-        """Load a single sprite from a file."""
+    def load_sprite(self, name, path):
+        """Load a single sprite"""
         try:
-            sprite = pygame.image.load(path).convert_alpha()
-            if scale != 1:
-                new_size = (int(sprite.get_width() * scale), 
-                          int(sprite.get_height() * scale))
-                sprite = pygame.transform.scale(sprite, new_size)
-            self.sprites[name] = sprite
+            self.sprites[name] = pygame.image.load(path).convert_alpha()
             return True
         except (pygame.error, FileNotFoundError) as e:
             print(f"Error loading sprite {name} from {path}: {e}")
             return False
             
-    def load_spritesheet(self, name, path, sprite_size, scale=1):
-        """Load sprites from a spritesheet."""
+    def load_spritesheet(self, name, path, sprite_size):
+        """Load a sprite sheet and split it into individual sprites"""
         try:
-            spritesheet = pygame.image.load(path).convert_alpha()
-            width = spritesheet.get_width()
-            height = spritesheet.get_height()
+            sheet = pygame.image.load(path).convert_alpha()
+            self.spritesheets[name] = []
             
-            sprites = []
-            for y in range(0, height, sprite_size):
-                for x in range(0, width, sprite_size):
-                    rect = pygame.Rect(x, y, sprite_size, sprite_size)
-                    sprite = spritesheet.subsurface(rect)
-                    if scale != 1:
-                        new_size = (int(sprite_size * scale), 
-                                  int(sprite_size * scale))
-                        sprite = pygame.transform.scale(sprite, new_size)
-                    sprites.append(sprite)
+            # Get the dimensions of the sprite sheet
+            sheet_width = sheet.get_width()
+            sheet_height = sheet.get_height()
+            
+            # Calculate number of sprites in each direction
+            cols = sheet_width // sprite_size
+            rows = sheet_height // sprite_size
+            
+            # Split the sheet into individual sprites
+            for row in range(rows):
+                for col in range(cols):
+                    x = col * sprite_size
+                    y = row * sprite_size
+                    sprite = sheet.subsurface((x, y, sprite_size, sprite_size))
+                    self.spritesheets[name].append(sprite)
                     
-            self.animations[name] = sprites
             return True
         except (pygame.error, FileNotFoundError) as e:
             print(f"Error loading spritesheet {name} from {path}: {e}")
+            # Create a default colored square as fallback
+            fallback = pygame.Surface((sprite_size, sprite_size), pygame.SRCALPHA)
+            fallback.fill((255, 0, 255))  # Magenta for missing sprites
+            self.spritesheets[name] = [fallback] * 16  # 16 frames for basic animation
             return False
-    
+            
     def get_sprite(self, name):
-        """Get a single sprite by name."""
+        """Get a single sprite by name"""
         return self.sprites.get(name)
         
     def get_animation_frame(self, name, frame):
-        """Get a specific frame from an animation."""
-        if name in self.animations:
-            return self.animations[name][frame % len(self.animations[name])]
+        """Get a frame from a sprite sheet"""
+        if name in self.spritesheets:
+            frames = self.spritesheets[name]
+            if 0 <= frame < len(frames):
+                return frames[frame]
         return None

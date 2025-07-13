@@ -32,13 +32,54 @@ class Enemy:
         self.knockback_distance = 0
         self.knockback_direction = (0, 0)
         
-        # Create a simple colored sprite
-        self.sprite = pygame.Surface((PLAYER_SIZE, PLAYER_SIZE))
-        self.sprite.fill((255, 0, 0))  # Red color for enemies
+        # Create a more detailed enemy appearance
+        self.sprite = pygame.Surface((PLAYER_SIZE, PLAYER_SIZE), pygame.SRCALPHA)
+        self._create_enemy_sprite()
         
         # Combat text
-        self.damage_numbers = []  # List of (damage, x, y, timer) tuples
+        self.damage_numbers = []  # List of (damage, x, y, timer, color) tuples
         self.damage_number_duration = 1.0  # How long damage numbers stay on screen
+        
+    def _create_enemy_sprite(self):
+        """Create a more detailed enemy sprite"""
+        # Main body (dark red)
+        pygame.draw.rect(self.sprite, (150, 0, 0), 
+                        (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8))
+        
+        # Lighter red outline
+        pygame.draw.rect(self.sprite, (200, 0, 0), 
+                        (4, 4, PLAYER_SIZE-8, PLAYER_SIZE-8), 2)
+        
+        # Eyes (white with black pupils)
+        eye_color = (255, 255, 255)
+        pupil_color = (0, 0, 0)
+        
+        # Left eye
+        pygame.draw.ellipse(self.sprite, eye_color, 
+                          (8, 8, 8, 12))
+        pygame.draw.ellipse(self.sprite, pupil_color, 
+                          (10, 12, 4, 4))
+        
+        # Right eye
+        pygame.draw.ellipse(self.sprite, eye_color, 
+                          (PLAYER_SIZE-16, 8, 8, 12))
+        pygame.draw.ellipse(self.sprite, pupil_color, 
+                          (PLAYER_SIZE-14, 12, 4, 4))
+        
+        # Angry eyebrows
+        pygame.draw.line(self.sprite, (100, 0, 0), 
+                        (6, 6), (14, 10), 2)
+        pygame.draw.line(self.sprite, (100, 0, 0), 
+                        (PLAYER_SIZE-6, 6), (PLAYER_SIZE-14, 10), 2)
+        
+        # Spikes on top
+        spike_color = (200, 0, 0)
+        spike_points = [
+            (8, 4), (12, 0), (16, 4),
+            (16, 4), (20, 0), (24, 4),
+            (24, 4), (28, 0), (32, 4)
+        ]
+        pygame.draw.lines(self.sprite, spike_color, False, spike_points, 2)
         
     def update(self, dt, player, game_map):
         """Update enemy state"""
@@ -59,11 +100,14 @@ class Enemy:
             new_x = self.x + self.knockback_direction[0] * move_distance
             new_y = self.y + self.knockback_direction[1] * move_distance
             
-            if game_map.is_walkable(new_x, new_y):
+            if game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
                 self.x = new_x
                 self.y = new_y
                 self.rect.x = new_x
                 self.rect.y = new_y
+            else:
+                # If we hit a wall, stop knockback
+                self.knockback_distance = 0
             
             self.knockback_distance -= move_distance
             
@@ -87,7 +131,7 @@ class Enemy:
                         new_y = self.y + dy * self.speed
                         
                         # Check collision with map
-                        if game_map.is_walkable(new_x, new_y):
+                        if game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
                             self.x = new_x
                             self.y = new_y
                             self.rect.x = new_x
@@ -98,11 +142,11 @@ class Enemy:
                     self.attack(player)
                     
         # Update damage numbers
-        self.damage_numbers = [(dmg, x, y, timer - dt) 
-                             for dmg, x, y, timer in self.damage_numbers 
+        self.damage_numbers = [(dmg, x, y, timer - dt, color) 
+                             for dmg, x, y, timer, color in self.damage_numbers 
                              if timer > 0]
     
-    def take_damage(self, damage, knockback_direction=None):
+    def take_damage(self, damage, knockback_direction=None, damage_color=(255, 255, 255)):
         """Take damage and handle knockback"""
         if not self.is_alive or self.hit_timer > 0:
             return
@@ -111,12 +155,13 @@ class Enemy:
         actual_damage = max(1, damage - self.defense)
         self.current_health -= actual_damage
         
-        # Add damage number
+        # Add damage number with color
         self.damage_numbers.append((
             actual_damage,
             self.x + random.randint(-10, 10),
             self.y - 20,
-            self.damage_number_duration
+            self.damage_number_duration,
+            damage_color
         ))
         
         # Apply knockback
@@ -172,20 +217,20 @@ class Enemy:
         bar_x = screen_x
         bar_y = screen_y - 10
         
-        # Background
-        pygame.draw.rect(screen, (255, 0, 0),
+        # Background (gray)
+        pygame.draw.rect(screen, (128, 128, 128),
                         (bar_x, bar_y, bar_width, bar_height))
-        # Health
-        pygame.draw.rect(screen, (0, 255, 0),
+        # Health (red for enemies)
+        pygame.draw.rect(screen, (255, 0, 0),
                         (bar_x, bar_y, bar_width * health_pct, bar_height))
                         
-        # Draw damage numbers
+        # Draw damage numbers with colors
         font = pygame.font.Font(None, 20)
-        for damage, x, y, timer in self.damage_numbers:
+        for damage, x, y, timer, color in self.damage_numbers:
             # Float up and fade out
             y_offset = (self.damage_number_duration - timer) * 30
             alpha = int(255 * (timer / self.damage_number_duration))
             
-            text = font.render(str(damage), True, (255, 255, 255))
+            text = font.render(str(damage), True, color)
             text.set_alpha(alpha)
             screen.blit(text, (x - camera_x, y - y_offset - camera_y))

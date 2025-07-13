@@ -4,7 +4,7 @@ from .player import Player
 from .map import GameMap
 from .ui import UI
 from .enemy import Enemy
-from ..common.constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
+from ..common.constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, PLAYER_SIZE
 
 class GameClient:
     def __init__(self):
@@ -43,20 +43,24 @@ class GameClient:
         self.help_text = [
             "Controls:",
             "WASD / Arrow Keys - Move",
-            "Left Mouse Click - Attack",
+            "J - Basic Attack",
+            "K - Special Attack (AoE)",
             "H - Toggle Help Menu",
+            "R - Emergency Respawn",
             "ESC - Quit Game",
             "",
             "Combat:",
-            "Attack enemies by clicking",
-            "Red squares are enemies",
+            "Basic Attack: Press J to attack in facing direction",
+            "Special Attack: Press K for spinning attack",
+            "Red enemies will chase and attack you",
             "Green bar is your health",
             "Red bar is enemy health",
             "",
             "Tips:",
             "Stay out of water!",
-            "Attack range is short",
-            "Enemies follow when close"
+            "Special attack has longer cooldown",
+            "Face enemies to attack them",
+            "Use knockback to your advantage"
         ]
         
     def _spawn_test_enemies(self):
@@ -98,9 +102,12 @@ class GameClient:
             self.animation_timer = 0
             self.game_map.update(dt)
         
+        # Update player's enemy reference
+        self.player.current_enemies = self.enemies
+        
         # Handle player input and movement
         self.player.handle_input(self.game_map)
-        self.player.update(dt)
+        self.player.update(dt, self.game_map)
         
         # Update enemies
         for enemy in self.enemies:
@@ -108,6 +115,31 @@ class GameClient:
         
         # Remove dead enemies
         self.enemies = [enemy for enemy in self.enemies if enemy.is_alive]
+        
+        # Check if player is in unwalkable tile and force respawn if stuck
+        player_tile_x = int(self.player.x // self.game_map.tile_size)
+        player_tile_y = int(self.player.y // self.game_map.tile_size)
+        if not self.game_map.is_walkable(self.player.x + PLAYER_SIZE/2, self.player.y + PLAYER_SIZE/2):
+            # Try to find nearest walkable tile
+            for dy in [-1, 0, 1]:
+                for dx in [-1, 0, 1]:
+                    test_x = (player_tile_x + dx) * self.game_map.tile_size + self.game_map.tile_size/2
+                    test_y = (player_tile_y + dy) * self.game_map.tile_size + self.game_map.tile_size/2
+                    if self.game_map.is_walkable(test_x, test_y):
+                        self.player.x = test_x - PLAYER_SIZE/2
+                        self.player.y = test_y - PLAYER_SIZE/2
+                        self.player.rect.x = self.player.x
+                        self.player.rect.y = self.player.y
+                        break
+                else:
+                    continue
+                break
+            else:
+                # If no nearby walkable tiles found, respawn at center
+                self.player.x = SCREEN_WIDTH // 2
+                self.player.y = SCREEN_HEIGHT // 2
+                self.player.rect.x = self.player.x
+                self.player.rect.y = self.player.y
         
         # Update camera to follow player
         self.camera_x = self.player.x - SCREEN_WIDTH // 2

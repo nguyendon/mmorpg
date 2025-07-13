@@ -17,6 +17,11 @@ class AnimationState(Enum):
     IDLE = 4
     ATTACK = 5
 
+class DamageType(Enum):
+    NORMAL = (255, 255, 255)  # White for normal damage
+    CRITICAL = (255, 255, 0)  # Yellow for critical hits
+    SPECIAL = (0, 255, 255)   # Cyan for special attack damage
+
 class Player:
     def __init__(self, x, y):
         self.x = x
@@ -41,8 +46,21 @@ class Player:
         self.is_hit = False
         self.knockback_distance = 0
         self.knockback_direction = (0, 0)
-        self.damage_numbers = []  # List of (damage, x, y, timer) tuples
+        self.damage_numbers = []  # List of (damage, x, y, timer, color) tuples
         self.damage_number_duration = 1.0  # How long damage numbers stay on screen
+        
+        # Special attack properties
+        self.special_attack_cooldown = 2.0  # Seconds
+        self.special_attack_timer = 0
+        self.special_attack_damage = 20
+        self.special_attack_range = 100  # Pixels
+        self.special_attack_knockback = 50
+        self.is_special_attacking = False
+        self.special_attack_duration = 0.3  # Seconds
+        self.special_attack_frame = 0
+        
+        # Reference to enemies (will be set by GameClient)
+        self.current_enemies = []
         
         # Animation properties
         self.sprite_manager = SpriteManager()
@@ -56,10 +74,13 @@ class Player:
         self.is_attacking = False
         self.attack_timer = 0
         self.attack_duration = 0.4  # Duration of attack animation
-
+        
+        # Critical hit chance
+        self.crit_chance = 0.2  # 20% chance for critical hit
+        self.crit_multiplier = 1.5  # 50% more damage on crit
+        
     def _load_sprites(self):
         """Load player sprites from spritesheet."""
-        # Get the absolute path to the assets directory
         current_file = Path(__file__).resolve()
         project_root = current_file.parent.parent.parent
         sprite_path = project_root / 'src' / 'assets' / 'images' / 'characters' / 'player_full.png'
@@ -69,37 +90,16 @@ class Player:
             return
             
         self.sprite_manager.load_spritesheet('player', str(sprite_path), PLAYER_SIZE)
-
-    def move(self, dx, dy, game_map):
-        """Move the player by the given delta x and y, considering map collisions."""
-        new_x = self.x + (dx * self.speed)
-        new_y = self.y + (dy * self.speed)
         
-        # Update movement state and direction
-        self.is_moving = dx != 0 or dy != 0
-        if self.is_moving:
-            if abs(dx) > abs(dy):
-                self.direction = Direction.RIGHT if dx > 0 else Direction.LEFT
-            else:
-                self.direction = Direction.DOWN if dy > 0 else Direction.UP
-        
-        # Check new positions independently to allow sliding along walls
-        if game_map.is_walkable(new_x + PLAYER_SIZE/2, self.y + PLAYER_SIZE/2):
-            self.x = new_x
-            self.rect.x = new_x
-        
-        if game_map.is_walkable(self.x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
-            self.y = new_y
-            self.rect.y = new_y
-
     def handle_input(self, game_map):
         """Handle keyboard input for player movement and actions."""
         # Only prevent movement during attack animation, not during knockback
-        if not self.is_attacking:
+        if not self.is_attacking and not self.is_special_attacking:
             keys = pygame.key.get_pressed()
             dx = 0
             dy = 0
 
+            # Movement
             if keys[pygame.K_LEFT] or keys[pygame.K_a]:
                 dx = -1
                 self.direction = Direction.LEFT
@@ -134,103 +134,19 @@ class Player:
                 self.y = new_y
                 self.rect.y = new_y
 
-        # Handle attack input
-        mouse = pygame.mouse.get_pressed()
-        if mouse[0] and not self.is_attacking:  # Left mouse button
-            self.start_attack()
-
-    def start_attack(self):
-        """Start attack animation."""
-        self.is_attacking = True
-        self.state = AnimationState.ATTACK
-        self.attack_timer = 0
-        self.animation_frame = 0
-
-    def update(self, dt):
-        """Update animation state and combat timers."""
-        # Update timers
-        if self.attack_timer > 0:
-            self.attack_timer -= dt
-        if self.hit_timer > 0:
-            self.hit_timer -= dt
-            if self.hit_timer <= 0:
-                self.is_hit = False
-                
-        # Handle knockback
-        if self.knockback_distance > 0:
-            move_distance = min(self.knockback_distance, 10 * dt)
-            self.x += self.knockback_direction[0] * move_distance
-            self.y += self.knockback_direction[1] * move_distance
-            self.rect.x = self.x
-            self.rect.y = self.y
-            self.knockback_distance -= move_distance
-        
-        if self.is_attacking:
-            self.attack_timer += dt
-            if self.attack_timer >= self.attack_duration:
-                self.is_attacking = False
-                self.state = AnimationState.IDLE
-                self.animation_frame = 0
-            else:
-                # Update attack animation frame
-                self.animation_timer += dt
-                if self.animation_timer >= self.animation_speed:
-                    self.animation_timer = 0
-                    self.animation_frame = (self.animation_frame + 1) % 4
-        else:
-            if self.is_moving:
-                self.animation_timer += dt
-                if self.animation_timer >= self.animation_speed:
-                    self.animation_timer = 0
-                    self.animation_frame = (self.animation_frame + 1) % 4
-            else:
-                self.state = AnimationState.IDLE
-                self.animation_timer += dt
-                if self.animation_timer >= self.animation_speed * 2:  # Slower idle animation
-                    self.animation_timer = 0
-                    self.animation_frame = (self.animation_frame + 1) % 4
-                    
-        # Update damage numbers
-        self.damage_numbers = [(dmg, x, y, timer - dt) 
-                             for dmg, x, y, timer in self.damage_numbers 
-                             if timer > 0]
-                    
-    def take_damage(self, damage, knockback_direction=None):
-        """Take damage from an attack and handle knockback"""
-        if self.hit_timer > 0:  # Still in invulnerability frames
-            return
-            
-        # Apply defense reduction
-        actual_damage = max(1, damage - self.defense)
-        self.current_health -= actual_damage
-        
-        # Add damage number
-        self.damage_numbers.append((
-            actual_damage,
-            self.x + random.randint(-10, 10),
-            self.y - 20,
-            self.damage_number_duration
-        ))
-        
-        # Apply knockback
-        if knockback_direction:
-            self.knockback_distance = 30
-            self.knockback_direction = knockback_direction
-        
-        self.is_hit = True
-        self.hit_timer = self.hit_cooldown
-        
-        # Check if dead
-        if self.current_health <= 0:
-            self.current_health = 0
-            # Handle death (could add game over screen here)
+        # Attack inputs
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_j] and not self.is_attacking and not self.is_special_attacking and self.attack_timer <= 0:
+            self.attack(self.current_enemies)
+        if keys[pygame.K_k] and not self.is_attacking and not self.is_special_attacking and self.special_attack_timer <= 0:
+            self.special_attack(self.current_enemies)
             
     def attack(self, enemies):
-        """Perform attack and check for hits on enemies"""
+        """Perform basic attack"""
         if not self.is_attacking and self.attack_timer <= 0:
             self.is_attacking = True
             self.state = AnimationState.ATTACK
-            self.attack_timer = 0
+            self.attack_timer = self.attack_cooldown
             self.animation_frame = 0
             
             # Get attack hitbox based on direction
@@ -248,9 +164,134 @@ class Player:
                     else:
                         knockback_direction = (1, 0)
                         
-                    # Deal damage
-                    enemy.take_damage(self.strength, knockback_direction)
+                    # Check for critical hit
+                    is_crit = random.random() < self.crit_chance
+                    damage = self.strength * self.crit_multiplier if is_crit else self.strength
+                    damage_type = DamageType.CRITICAL if is_crit else DamageType.NORMAL
                     
+                    # Deal damage
+                    enemy.take_damage(int(damage), knockback_direction, damage_type.value)
+                    
+    def special_attack(self, enemies):
+        """Perform special spinning attack"""
+        if not self.is_special_attacking and self.special_attack_timer <= 0:
+            self.is_special_attacking = True
+            self.special_attack_timer = self.special_attack_cooldown
+            self.special_attack_frame = 0
+            
+            # Get all enemies in range
+            for enemy in enemies:
+                if enemy.is_alive:
+                    # Calculate distance to enemy
+                    dx = enemy.x - self.x
+                    dy = enemy.y - self.y
+                    distance = math.sqrt(dx**2 + dy**2)
+                    
+                    if distance <= self.special_attack_range:
+                        # Calculate knockback direction
+                        knockback_direction = (dx/distance, dy/distance) if distance > 0 else (1, 0)
+                        
+                        # Deal special attack damage
+                        enemy.take_damage(self.special_attack_damage, knockback_direction, DamageType.SPECIAL.value)
+                    
+    def update(self, dt, game_map=None):
+        """Update animation state and combat timers."""
+        # Update timers
+        if self.attack_timer > 0:
+            self.attack_timer -= dt
+        if self.special_attack_timer > 0:
+            self.special_attack_timer -= dt
+        if self.hit_timer > 0:
+            self.hit_timer -= dt
+            if self.hit_timer <= 0:
+                self.is_hit = False
+                
+        # Handle knockback with better collision detection
+        if self.knockback_distance > 0:
+            move_distance = min(self.knockback_distance, 10 * dt)
+            new_x = self.x + self.knockback_direction[0] * move_distance
+            new_y = self.y + self.knockback_direction[1] * move_distance
+            
+            # Check if new position is walkable (if we have a game map)
+            if game_map is None or game_map.is_walkable(new_x + PLAYER_SIZE/2, new_y + PLAYER_SIZE/2):
+                self.x = new_x
+                self.y = new_y
+                self.rect.x = new_x
+                self.rect.y = new_y
+            else:
+                # If we hit a wall, stop knockback
+                self.knockback_distance = 0
+            
+            self.knockback_distance -= move_distance
+        
+        # Update attack states
+        if self.is_attacking:
+            self.attack_timer += dt
+            if self.attack_timer >= self.attack_duration:
+                self.is_attacking = False
+                self.state = AnimationState.IDLE
+                self.animation_frame = 0
+            else:
+                # Update attack animation frame
+                self.animation_timer += dt
+                if self.animation_timer >= self.animation_speed:
+                    self.animation_timer = 0
+                    self.animation_frame = (self.animation_frame + 1) % 4
+        elif self.is_special_attacking:
+            self.special_attack_frame += dt
+            if self.special_attack_frame >= self.special_attack_duration:
+                self.is_special_attacking = False
+                self.state = AnimationState.IDLE
+            # Special attack animation could be added here
+        else:
+            if self.is_moving:
+                self.animation_timer += dt
+                if self.animation_timer >= self.animation_speed:
+                    self.animation_timer = 0
+                    self.animation_frame = (self.animation_frame + 1) % 4
+            else:
+                self.state = AnimationState.IDLE
+                self.animation_timer += dt
+                if self.animation_timer >= self.animation_speed * 2:  # Slower idle animation
+                    self.animation_timer = 0
+                    self.animation_frame = (self.animation_frame + 1) % 4
+                    
+        # Update damage numbers
+        self.damage_numbers = [(dmg, x, y, timer - dt, color) 
+                             for dmg, x, y, timer, color in self.damage_numbers 
+                             if timer > 0]
+                    
+    def take_damage(self, damage, knockback_direction=None):
+        """Take damage from an attack and handle knockback"""
+        if self.hit_timer > 0:  # Still in invulnerability frames
+            return
+            
+        # Apply defense reduction
+        actual_damage = max(1, damage - self.defense)
+        self.current_health -= actual_damage
+        
+        # Add damage number (always white for damage taken)
+        self.damage_numbers.append((
+            actual_damage,
+            self.x + random.randint(-10, 10),
+            self.y - 20,
+            self.damage_number_duration,
+            DamageType.NORMAL.value
+        ))
+        
+        # Apply knockback
+        if knockback_direction:
+            self.knockback_distance = 30
+            self.knockback_direction = knockback_direction
+        
+        self.is_hit = True
+        self.hit_timer = self.hit_cooldown
+        
+        # Check if dead
+        if self.current_health <= 0:
+            self.current_health = 0
+            # Handle death (could add game over screen here)
+            
     def _get_attack_hitbox(self):
         """Get the attack hitbox based on player direction"""
         if self.direction == Direction.LEFT:
@@ -265,9 +306,9 @@ class Player:
         else:  # Direction.DOWN
             return pygame.Rect(self.rect.x, self.rect.bottom,
                              self.rect.width, self.attack_range)
-
+            
     def draw(self, screen, camera_x=0, camera_y=0):
-        """Draw the player on the screen with camera offset."""
+        """Draw the player and any effects"""
         sprite_row = self.state.value if not self.is_moving else self.direction.value
         sprite = self.sprite_manager.get_animation_frame('player', 
             sprite_row * 4 + self.animation_frame)
@@ -287,16 +328,25 @@ class Player:
                     self.rect.y - camera_y
                 ))
                 
-            # Draw damage numbers
+            # Draw damage numbers with colors
             font = pygame.font.Font(None, 20)
-            for damage, x, y, timer in self.damage_numbers:
+            for damage, x, y, timer, color in self.damage_numbers:
                 # Float up and fade out
                 y_offset = (self.damage_number_duration - timer) * 30
                 alpha = int(255 * (timer / self.damage_number_duration))
                 
-                text = font.render(str(damage), True, (255, 255, 255))
+                text = font.render(str(damage), True, color)
                 text.set_alpha(alpha)
                 screen.blit(text, (x - camera_x, y - y_offset - camera_y))
+                
+            # Debug: draw attack hitbox when attacking
+            if self.is_attacking or self.is_special_attacking:
+                hitbox = self._get_attack_hitbox()
+                pygame.draw.rect(screen, (255, 0, 0), 
+                               (hitbox.x - camera_x,
+                                hitbox.y - camera_y,
+                                hitbox.width,
+                                hitbox.height), 1)
         else:
             # Fallback to rectangle if sprite loading failed
             draw_rect = pygame.Rect(
@@ -306,7 +356,7 @@ class Player:
                 self.rect.height
             )
             pygame.draw.rect(screen, (255, 0, 0), draw_rect)
-
+            
     def get_position(self):
         """Return the current position as a tuple."""
         return (self.x, self.y)

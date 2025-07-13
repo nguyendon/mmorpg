@@ -35,8 +35,8 @@ class UI:
         health_percentage = current_health / max_health
         health_width = int(self.health_bar_size[0] * health_percentage)
         
-        # Health bar
-        pygame.draw.rect(screen, self.RED, 
+        # Health bar (green for player)
+        pygame.draw.rect(screen, self.GREEN, 
                         (self.health_bar_pos[0], self.health_bar_pos[1], 
                          health_width, self.health_bar_size[1]))
         
