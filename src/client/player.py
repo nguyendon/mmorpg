@@ -656,6 +656,36 @@ class Player:
                 color=(0, 200, 255)  # Light blue for wave attack
             )
 
+    def take_damage(self, damage, knockback_direction=None):
+        """Take damage from an enemy and handle knockback"""
+        if self.hit_timer > 0:  # Still in invulnerability period
+            return
+            
+        # Apply defense reduction
+        actual_damage = max(1, damage - self.defense)
+        self.current_health -= actual_damage
+        
+        # Add damage number
+        self.damage_numbers.append((
+            actual_damage,
+            self.x + random.randint(-10, 10),
+            self.y - 20,
+            self.damage_number_duration,
+            DamageType.NORMAL.value
+        ))
+        
+        # Apply knockback
+        if knockback_direction:
+            self.knockback_distance = 30
+            self.knockback_direction = knockback_direction
+        
+        self.is_hit = True
+        self.hit_timer = self.hit_cooldown
+        
+        # Check if dead (you might want to add game over logic here)
+        if self.current_health <= 0:
+            self.current_health = 0
+            
     def update_wave_attacks(self, dt):
         """Update active wave attacks"""
         for wave in self.waves[:]:  # Copy list to safely remove while iterating
