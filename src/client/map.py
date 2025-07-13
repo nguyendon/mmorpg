@@ -1,7 +1,7 @@
 import pygame
+from pathlib import Path
 from ..common.tiles import Tile, TileType
 from .sprite_manager import SpriteManager
-import os
 
 class GameMap:
     def __init__(self, width, height, tile_size=32):
@@ -23,13 +23,18 @@ class GameMap:
 
     def _load_sprites(self):
         """Load all tile sprites."""
-        base_path = os.path.join(os.path.dirname(__file__), '..', 'assets', 'images', 'tiles')
+        # Get the absolute path to the assets directory
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parent.parent.parent
+        base_path = project_root / 'src' / 'assets' / 'images' / 'tiles'
         
+        if not base_path.exists():
+            print(f"Error: Tiles directory not found at {base_path}")
+            return
+            
         # Load all PNG files in the tiles directory
-        for filename in os.listdir(base_path):
-            if filename.endswith('.png'):
-                sprite_path = os.path.join(base_path, filename)
-                self.sprite_manager.load_sprite(filename, sprite_path)
+        for filepath in base_path.glob('*.png'):
+            self.sprite_manager.load_sprite(filepath.name, str(filepath))
 
     def _create_sample_map(self):
         """Create a sample map with various features"""
