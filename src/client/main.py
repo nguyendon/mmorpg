@@ -6,6 +6,7 @@ from .ui import UI
 from .enemy import Enemy
 from .particle_system import ParticleSystem
 from .enemy_spawner import EnemySpawner
+from .npc_spawner import NPCSpawner
 from ..common.constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, PLAYER_SIZE
 
 class GameClient:
@@ -37,6 +38,10 @@ class GameClient:
         self.enemy_spawner = EnemySpawner(self.game_map)
         self.enemies = []
         self._spawn_test_enemies()
+        
+        # Initialize NPC spawner and spawn some NPCs
+        self.npc_spawner = NPCSpawner()
+        self._spawn_npcs()
 
         # Camera position
         self.camera_x = 0
@@ -52,10 +57,11 @@ class GameClient:
         self.help_text = [
             "Controls:",
             "WASD / Arrow Keys - Move",
-            "J - Basic Attack",
-            "K - Spin Attack",
-            "L - Dash Attack",
-            "U - Wave Attack",
+            "J - Basic Attack (Free)",
+            "K - Spin Attack (30 Mana)",
+            "L - Dash Attack (20 Mana)",
+            "U - Wave Attack (40 Mana)",
+            "E - Interact with NPCs",
             "H - Toggle Help Menu",
             "R - Emergency Respawn",
             "ESC - Quit Game",
@@ -69,15 +75,44 @@ class GameClient:
             "Tips:",
             "Stay out of water!",
             "Different attacks have different cooldowns",
-            "Enemies respawn over time",
+            "Mana regenerates over time",
+            "Talk to NPCs for information",
             "Critical hits show yellow numbers",
             "Special attacks show cyan numbers"
         ]
+        
+        # Dialog system
+        self.show_dialog = False
+        self.current_dialog = ""
+        self.dialog_font = pygame.font.Font(None, 36)
         
     def __del__(self):
         if self._initialized:
             pygame.quit()
             self._initialized = False
+            
+    def _spawn_npcs(self):
+        """Spawn initial set of NPCs in safe locations"""
+        # Spawn a villager
+        self.npc_spawner.spawn_npc(
+            SCREEN_WIDTH // 2 - 100,
+            SCREEN_HEIGHT // 2 - 100,
+            "villager"
+        )
+        
+        # Spawn a merchant
+        self.npc_spawner.spawn_npc(
+            SCREEN_WIDTH // 2 + 100,
+            SCREEN_HEIGHT // 2 - 100,
+            "merchant"
+        )
+        
+        # Spawn a guard
+        self.npc_spawner.spawn_npc(
+            SCREEN_WIDTH // 2,
+            SCREEN_HEIGHT // 2 - 150,
+            "guard"
+        )
         
     def _spawn_test_enemies(self):
         """Spawn initial set of enemies"""
@@ -102,6 +137,13 @@ class GameClient:
                     self.running = False
                 elif event.key == pygame.K_h:
                     self.show_help = not self.show_help
+                elif event.key == pygame.K_e:
+                    # Check for NPC interaction
+                    for npc in self.npc_spawner.npcs:
+                        if npc.can_interact(self.player.x, self.player.y):
+                            self.show_dialog = True
+                            self.current_dialog = npc.get_next_dialogue()
+                            break
                 elif event.key == pygame.K_r:  # Emergency respawn
                     self.player.x = SCREEN_WIDTH // 2
                     self.player.y = SCREEN_HEIGHT // 2
@@ -111,6 +153,9 @@ class GameClient:
                     self.player.knockback_distance = 0
                     self.player.current_attack = None
                     self.player.is_attacking = False
+            elif event.type == pygame.KEYUP:
+                if event.key == pygame.K_e:
+                    self.show_dialog = False
 
     def update(self):
         dt = self.clock.get_time() / 1000.0  # Convert to seconds
@@ -131,6 +176,9 @@ class GameClient:
         # Update enemies
         for enemy in self.enemies:
             enemy.update(dt, self.player, self.game_map)
+        
+        # Update NPCs
+        self.npc_spawner.update(self.player.x, self.player.y)
         
         # Remove dead enemies and create death effects
         for enemy in self.enemies[:]:  # Copy list to safely remove while iterating
@@ -207,6 +255,9 @@ class GameClient:
         # Draw game map
         self.game_map.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
+        # Draw NPCs
+        self.npc_spawner.draw(self.screen, int(self.camera_x), int(self.camera_y))
+        
         # Draw enemies
         for enemy in self.enemies:
             enemy.draw(self.screen, int(self.camera_x), int(self.camera_y))
@@ -219,6 +270,32 @@ class GameClient:
         
         # Draw UI
         self.ui.draw(self.screen, self.player, self.game_map)
+        
+        # Draw dialog box if active
+        if self.show_dialog:
+            # Semi-transparent background for dialog box
+            dialog_surface = pygame.Surface((SCREEN_WIDTH * 0.8, 100))
+            dialog_surface.fill((0, 0, 0))
+            dialog_surface.set_alpha(200)
+            
+            # Position dialog box at bottom of screen
+            dialog_rect = dialog_surface.get_rect()
+            dialog_rect.centerx = SCREEN_WIDTH // 2
+            dialog_rect.bottom = SCREEN_HEIGHT - 20
+            
+            # Draw dialog box
+            self.screen.blit(dialog_surface, dialog_rect)
+            
+            # Draw dialog text
+            text_surface = self.dialog_font.render(self.current_dialog, True, (255, 255, 255))
+            text_rect = text_surface.get_rect(center=dialog_rect.center)
+            self.screen.blit(text_surface, text_rect)
+            
+            # Draw "Press E" prompt
+            prompt_surface = self.dialog_font.render("Press E to continue", True, (200, 200, 200))
+            prompt_rect = prompt_surface.get_rect(bottom=dialog_rect.bottom - 10, 
+                                                right=dialog_rect.right - 10)
+            self.screen.blit(prompt_surface, prompt_rect)
         
         # Draw help menu
         if self.show_help:

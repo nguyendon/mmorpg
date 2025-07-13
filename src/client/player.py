@@ -21,9 +21,9 @@ class AnimationState(Enum):
 
 class AttackType(Enum):
     SLASH = 1  # Basic melee attack
-    SPIN = 2   # 360-degree attack
-    DASH = 3   # Dash attack
-    WAVE = 4   # Energy wave attack
+    SPIN = 2   # 360-degree attack (costs mana)
+    DASH = 3   # Dash attack (costs mana)
+    WAVE = 4   # Energy wave attack (costs mana)
 
 class DamageType(Enum):
     NORMAL = (255, 255, 255)  # White for normal damage
@@ -33,6 +33,7 @@ class DamageType(Enum):
 class Player:
     # Constants
     MAX_DAMAGE_NUMBERS = 50
+    MANA_REGEN_RATE = 10  # Mana points per second
     
     def __init__(self, x, y):
         self.x = x
@@ -45,6 +46,8 @@ class Player:
         self.xp = 0
         self.max_health = 100
         self.current_health = self.max_health
+        self.max_mana = 100
+        self.current_mana = self.max_mana
         self.strength = 10
         self.defense = 5
         
@@ -73,6 +76,12 @@ class Player:
             AttackType.SPIN: 2.0,
             AttackType.DASH: 1.5,
             AttackType.WAVE: 3.0
+        }
+        self.mana_costs = {
+            AttackType.SLASH: 0,    # Basic attack is free
+            AttackType.SPIN: 30,    # Spin attack costs 30 mana
+            AttackType.DASH: 20,    # Dash attack costs 20 mana
+            AttackType.WAVE: 40     # Wave attack costs 40 mana
         }
         
         # Dash attack properties
@@ -168,11 +177,14 @@ class Player:
             if keys[pygame.K_j] and self.attack_timers[AttackType.SLASH] <= 0:
                 self.slash_attack()
             elif keys[pygame.K_k] and self.attack_timers[AttackType.SPIN] <= 0:
-                self.spin_attack()
+                if self.current_mana >= self.mana_costs[AttackType.SPIN]:
+                    self.spin_attack()
             elif keys[pygame.K_l] and self.attack_timers[AttackType.DASH] <= 0:
-                self.dash_attack()
+                if self.current_mana >= self.mana_costs[AttackType.DASH]:
+                    self.dash_attack()
             elif keys[pygame.K_u] and self.attack_timers[AttackType.WAVE] <= 0:
-                self.wave_attack()
+                if self.current_mana >= self.mana_costs[AttackType.WAVE]:
+                    self.wave_attack()
                 
     def slash_attack(self):
         """Basic melee attack"""
@@ -213,6 +225,9 @@ class Player:
 
     def spin_attack(self):
         """360-degree spinning attack"""
+        # Consume mana
+        self.current_mana -= self.mana_costs[AttackType.SPIN]
+        
         self.current_attack = AttackType.SPIN
         self.attack_timers[AttackType.SPIN] = self.attack_cooldowns[AttackType.SPIN]
         self.state = AnimationState.ATTACK
@@ -243,6 +258,9 @@ class Player:
 
     def dash_attack(self):
         """Quick dash that damages enemies in path"""
+        # Consume mana
+        self.current_mana -= self.mana_costs[AttackType.DASH]
+        
         self.current_attack = AttackType.DASH
         self.attack_timers[AttackType.DASH] = self.attack_cooldowns[AttackType.DASH]
         self.state = AnimationState.DASH
@@ -262,6 +280,9 @@ class Player:
 
     def wave_attack(self):
         """Send out an energy wave"""
+        # Consume mana
+        self.current_mana -= self.mana_costs[AttackType.WAVE]
+        
         self.current_attack = AttackType.WAVE
         self.attack_timers[AttackType.WAVE] = self.attack_cooldowns[AttackType.WAVE]
         self.state = AnimationState.CAST
@@ -337,6 +358,10 @@ class Player:
 
     def update(self, dt, game_map=None):
         """Update player state"""
+        # Regenerate mana
+        self.current_mana = min(self.max_mana, 
+                              self.current_mana + self.MANA_REGEN_RATE * dt)
+        
         # Update attack timers
         for attack_type in AttackType:
             if self.attack_timers[attack_type] > 0:
@@ -518,7 +543,7 @@ class Player:
             bar_width = self.rect.width
             bar_height = 5
             bar_x = self.rect.x - camera_x
-            bar_y = self.rect.y - 10 - camera_y
+            bar_y = self.rect.y - 15 - camera_y
             
             # Background (dark gray)
             pygame.draw.rect(screen, (64, 64, 64),
@@ -534,6 +559,23 @@ class Player:
                 highlight_height = max(1, int(bar_height * 0.3))
                 pygame.draw.rect(screen, (min(red + 50, 255), min(green + 50, 255), 50),
                                (bar_x, bar_y, bar_width * health_pct, highlight_height))
+                               
+            # Draw mana bar
+            mana_pct = self.current_mana / self.max_mana
+            mana_bar_y = bar_y - 7  # Position above health bar
+            
+            # Background (dark gray)
+            pygame.draw.rect(screen, (64, 64, 64),
+                           (bar_x, mana_bar_y, bar_width, bar_height))
+            # Mana (blue)
+            if mana_pct > 0:
+                mana_color = (50, 50, 255)
+                pygame.draw.rect(screen, mana_color,
+                               (bar_x, mana_bar_y, bar_width * mana_pct, bar_height))
+                # Add highlight
+                highlight_height = max(1, int(bar_height * 0.3))
+                pygame.draw.rect(screen, (100, 100, 255),
+                               (bar_x, mana_bar_y, bar_width * mana_pct, highlight_height))
                 
             # Draw damage numbers with colors and effects
             font = pygame.font.Font(None, 24)  # Slightly larger font
