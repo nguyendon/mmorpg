@@ -98,3 +98,29 @@ class UI:
             screen.blit(text_surface, (x + 5, y + 5))
             
             y += 30  # Move down for next ability
+            
+        # Draw equipped items
+        y += 20  # Add some space
+        pygame.draw.rect(screen, (40, 40, 40), (x, y, 150, 120))
+        pygame.draw.rect(screen, (60, 60, 60), (x, y, 150, 120), 1)
+        
+        # Title
+        title = self.small_font.render("Equipment:", True, (200, 200, 200))
+        screen.blit(title, (x + 5, y + 5))
+        y += 25
+        
+        # Equipment slots
+        for slot, item in player.equipment.items():
+            if item:
+                text = f"{slot.capitalize()}: {item.name}"
+                color = (255, 255, 255)
+            else:
+                text = f"{slot.capitalize()}: None"
+                color = (150, 150, 150)
+            text_surface = self.small_font.render(text, True, color)
+            screen.blit(text_surface, (x + 10, y))
+            y += 20
+            
+        # Draw inventory if visible
+        if player.inventory.visible:
+            player.inventory.draw(screen)

@@ -105,6 +105,8 @@ class GameClient:
             "K - Spin Attack (30 Mana)",
             "L - Dash Attack (20 Mana)",
             "U - Wave Attack (40 Mana)",
+            "SPACE - Fire Gun (if equipped)",
+            "I - Toggle Inventory",
             "E - Interact with NPCs",
             "H - Toggle Help Menu",
             "R - Emergency Respawn",
@@ -115,6 +117,14 @@ class GameClient:
             "Spin Attack (K): Hit all nearby enemies",
             "Dash Attack (L): Quick dash with damage",
             "Wave Attack (U): Ranged energy wave",
+            "Gun (SPACE): Ranged weapon attack",
+            "",
+            "Items:",
+            "Pick up items by walking over them",
+            "Open inventory with I key",
+            "Click items to equip/use them",
+            "Potions heal automatically",
+            "Guns must be equipped to use",
             "",
             "Tips:",
             "Stay out of water!",
@@ -219,6 +229,9 @@ class GameClient:
                     self.running = False
                 elif event.key == pygame.K_h:
                     self.show_help = not self.show_help
+                elif event.key == pygame.K_i:
+                    # Toggle inventory
+                    self.player.inventory.visible = not self.player.inventory.visible
                 elif event.key == pygame.K_e:
                     # Check for NPC interaction
                     for npc in self.npc_spawner.npcs:
@@ -238,6 +251,14 @@ class GameClient:
             elif event.type == pygame.KEYUP:
                 if event.key == pygame.K_e:
                     self.show_dialog = False
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    # Handle inventory clicks if inventory is visible
+                    if self.player.inventory.visible:
+                        mouse_pos = pygame.mouse.get_pos()
+                        clicked_item = self.player.inventory.handle_click(*mouse_pos)
+                        if clicked_item:
+                            self.player.equip_item(self.player.inventory.selected_slot)
 
     def update(self):
         dt = self.clock.get_time() / 1000.0  # Convert to seconds
