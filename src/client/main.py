@@ -365,6 +365,114 @@ class GameClient:
         self.camera_x = max(0, min(self.camera_x, max_x))
         self.camera_y = max(0, min(self.camera_y, max_y))
 
+    def draw_status_bar(self, screen):
+        """Draw the player's status bar at the top of the screen"""
+        # Status bar background
+        bar_height = 80  # Increased height to accommodate all bars
+        padding = 10
+        pygame.draw.rect(screen, (40, 40, 40), 
+                        (0, 0, SCREEN_WIDTH, bar_height))
+        pygame.draw.line(screen, (60, 60, 60),
+                        (0, bar_height), (SCREEN_WIDTH, bar_height), 2)
+
+        # Level display
+        font = pygame.font.Font(None, 32)
+        level_text = f"Level {self.player.level}"
+        level_surface = font.render(level_text, True, (255, 255, 255))
+        screen.blit(level_surface, (padding, padding))
+
+        # Bar dimensions
+        bar_width = 200
+        bar_height = 15
+        bar_x = level_surface.get_width() + padding * 2
+        
+        # Health bar
+        health_bar_y = padding
+        health_pct = self.player.current_health / self.player.max_health
+        
+        # Health bar background
+        pygame.draw.rect(screen, (60, 60, 60),
+                        (bar_x, health_bar_y, bar_width, bar_height))
+        
+        # Health bar fill
+        if health_pct > 0:
+            green = int(255 * health_pct)
+            red = int(255 * (1 - health_pct))
+            health_color = (red, green, 0)
+            pygame.draw.rect(screen, health_color,
+                           (bar_x, health_bar_y, bar_width * health_pct, bar_height))
+            # Add highlight
+            highlight_height = max(1, int(bar_height * 0.3))
+            pygame.draw.rect(screen, (min(red + 50, 255), min(green + 50, 255), 50),
+                           (bar_x, health_bar_y, bar_width * health_pct, highlight_height))
+        
+        # Health text
+        health_text = f"HP: {int(self.player.current_health)}/{self.player.max_health}"
+        health_text_surface = font.render(health_text, True, (255, 255, 255))
+        screen.blit(health_text_surface, 
+                   (bar_x + bar_width + padding,
+                    health_bar_y))
+
+        # Mana bar
+        mana_bar_y = health_bar_y + bar_height + 5
+        mana_pct = self.player.current_mana / self.player.max_mana
+        
+        # Mana bar background
+        pygame.draw.rect(screen, (60, 60, 60),
+                        (bar_x, mana_bar_y, bar_width, bar_height))
+        
+        # Mana bar fill
+        if mana_pct > 0:
+            mana_color = (50, 50, 255)
+            pygame.draw.rect(screen, mana_color,
+                           (bar_x, mana_bar_y, bar_width * mana_pct, bar_height))
+            # Add highlight
+            highlight_height = max(1, int(bar_height * 0.3))
+            pygame.draw.rect(screen, (100, 100, 255),
+                           (bar_x, mana_bar_y, bar_width * mana_pct, highlight_height))
+        
+        # Mana text
+        mana_text = f"MP: {int(self.player.current_mana)}/{self.player.max_mana}"
+        mana_text_surface = font.render(mana_text, True, (255, 255, 255))
+        screen.blit(mana_text_surface, 
+                   (bar_x + bar_width + padding,
+                    mana_bar_y))
+
+        # XP bar
+        xp_bar_y = mana_bar_y + bar_height + 5
+        xp_pct = self.player.xp / self.player.xp_to_next_level
+        
+        # XP bar background
+        pygame.draw.rect(screen, (60, 60, 60),
+                        (bar_x, xp_bar_y, bar_width, bar_height))
+        
+        # XP bar fill
+        if xp_pct > 0:
+            xp_color = (255, 215, 0)  # Gold color
+            pygame.draw.rect(screen, xp_color,
+                           (bar_x, xp_bar_y, bar_width * xp_pct, bar_height))
+            # Add highlight
+            highlight_height = max(1, int(bar_height * 0.3))
+            pygame.draw.rect(screen, (255, 235, 100),
+                           (bar_x, xp_bar_y, bar_width * xp_pct, highlight_height))
+        
+        # XP text
+        xp_text = f"XP: {self.player.xp}/{self.player.xp_to_next_level}"
+        xp_text_surface = font.render(xp_text, True, (255, 255, 255))
+        screen.blit(xp_text_surface, 
+                   (bar_x + bar_width + padding,
+                    xp_bar_y))
+
+        # Stats
+        stats_x = bar_x + bar_width + max(health_text_surface.get_width(), 
+                                        max(mana_text_surface.get_width(),
+                                            xp_text_surface.get_width())) + padding * 2
+        small_font = pygame.font.Font(None, 24)
+        stats_text = f"STR: {self.player.strength}  DEF: {self.player.defense}  SPD: {int(self.player.speed)}"
+        stats_surface = small_font.render(stats_text, True, (200, 200, 200))
+        screen.blit(stats_surface,
+                   (stats_x, padding))
+
     def render(self):
         # Fill background
         self.screen.fill((0, 0, 0))
@@ -391,6 +499,9 @@ class GameClient:
         
         # Draw UI
         self.ui.draw(self.screen, self.player, self.map_manager.get_current_map())
+        
+        # Draw status bar
+        self.draw_status_bar(self.screen)
         
         # Draw dialog box if active
         if self.show_dialog:
