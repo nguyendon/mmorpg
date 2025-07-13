@@ -17,6 +17,10 @@ class GameMap:
         # Initialize with grass
         self.tiles = [[Tile(TileType.GRASS) for _ in range(width)] for _ in range(height)]
         
+        # Initialize last safe position (center of map)
+        self.last_safe_x = (width * tile_size) / 2
+        self.last_safe_y = (height * tile_size) / 2
+        
         # Add some sample features (we'll make this data-driven later)
         self._create_sample_map()
         self._calculate_transitions()
@@ -121,9 +125,25 @@ class GameMap:
         tile_x = int(x // self.tile_size)
         tile_y = int(y // self.tile_size)
         
-        if 0 <= tile_x < self.width and 0 <= tile_y < self.height:
-            return self.tiles[tile_y][tile_x].walkable
-        return False
+        # Check bounds first
+        if not (0 <= tile_x < self.width and 0 <= tile_y < self.height):
+            return False
+            
+        current_tile = self.tiles[tile_y][tile_x]
+        
+        # If in water, allow movement only if already in that tile
+        # This prevents getting stuck in water but makes it impossible to enter
+        if current_tile.tile_type == TileType.WATER:
+            player_current_tile_x = int(self.last_safe_x // self.tile_size)
+            player_current_tile_y = int(self.last_safe_y // self.tile_size)
+            return tile_x == player_current_tile_x and tile_y == player_current_tile_y
+            
+        # Update last safe position if on walkable ground
+        if current_tile.walkable:
+            self.last_safe_x = tile_x * self.tile_size + self.tile_size / 2
+            self.last_safe_y = tile_y * self.tile_size + self.tile_size / 2
+            
+        return current_tile.walkable
 
     def get_tile(self, x, y):
         """Get the tile at a specific position"""

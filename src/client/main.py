@@ -3,6 +3,7 @@ import sys
 from .player import Player
 from .map import GameMap
 from .ui import UI
+from .enemy import Enemy
 from ..common.constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 
 class GameClient:
@@ -24,6 +25,10 @@ class GameClient:
         # Initialize UI
         self.ui = UI()
 
+        # Initialize enemies list and spawn some test enemies
+        self.enemies = []
+        self._spawn_test_enemies()
+
         # Camera position
         self.camera_x = 0
         self.camera_y = 0
@@ -32,6 +37,42 @@ class GameClient:
         self.animation_timer = 0
         self.animation_interval = 0.25  # Update animations every 250ms
 
+        # Help menu
+        self.show_help = False
+        self.help_font = pygame.font.Font(None, 32)
+        self.help_text = [
+            "Controls:",
+            "WASD / Arrow Keys - Move",
+            "Left Mouse Click - Attack",
+            "H - Toggle Help Menu",
+            "ESC - Quit Game",
+            "",
+            "Combat:",
+            "Attack enemies by clicking",
+            "Red squares are enemies",
+            "Green bar is your health",
+            "Red bar is enemy health",
+            "",
+            "Tips:",
+            "Stay out of water!",
+            "Attack range is short",
+            "Enemies follow when close"
+        ]
+        
+    def _spawn_test_enemies(self):
+        """Spawn some test enemies around the map"""
+        # Spawn 5 goblins in different locations
+        enemy_positions = [
+            (300, 300),
+            (500, 200),
+            (200, 500),
+            (600, 600),
+            (400, 400)
+        ]
+        
+        for pos in enemy_positions:
+            self.enemies.append(Enemy(*pos, "goblin"))
+
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -39,6 +80,14 @@ class GameClient:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
+                elif event.key == pygame.K_h:
+                    self.show_help = not self.show_help
+                elif event.key == pygame.K_r:  # Add emergency respawn
+                    self.player.x = SCREEN_WIDTH // 2
+                    self.player.y = SCREEN_HEIGHT // 2
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    self.player.attack(self.enemies)
 
     def update(self):
         dt = self.clock.get_time() / 1000.0  # Convert to seconds
@@ -52,6 +101,13 @@ class GameClient:
         # Handle player input and movement
         self.player.handle_input(self.game_map)
         self.player.update(dt)
+        
+        # Update enemies
+        for enemy in self.enemies:
+            enemy.update(dt, self.player, self.game_map)
+        
+        # Remove dead enemies
+        self.enemies = [enemy for enemy in self.enemies if enemy.is_alive]
         
         # Update camera to follow player
         self.camera_x = self.player.x - SCREEN_WIDTH // 2
@@ -70,11 +126,32 @@ class GameClient:
         # Draw game map
         self.game_map.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
+        # Draw enemies
+        for enemy in self.enemies:
+            enemy.draw(self.screen, int(self.camera_x), int(self.camera_y))
+        
         # Draw player
         self.player.draw(self.screen, int(self.camera_x), int(self.camera_y))
         
         # Draw UI
         self.ui.draw(self.screen, self.player, self.game_map)
+        
+        # Draw help menu
+        if self.show_help:
+            # Semi-transparent background
+            help_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            help_surface.fill((0, 0, 0))
+            help_surface.set_alpha(128)
+            self.screen.blit(help_surface, (0, 0))
+            
+            # Draw help text
+            y = 50
+            for line in self.help_text:
+                if line:  # Skip empty lines
+                    text_surface = self.help_font.render(line, True, (255, 255, 255))
+                    text_rect = text_surface.get_rect(centerx=SCREEN_WIDTH/2, y=y)
+                    self.screen.blit(text_surface, text_rect)
+                y += 40
         
         pygame.display.flip()
 
