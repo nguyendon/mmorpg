@@ -101,8 +101,8 @@ class UI:
             
         # Draw equipped items
         y += 20  # Add some space
-        pygame.draw.rect(screen, (40, 40, 40), (x, y, 150, 120))
-        pygame.draw.rect(screen, (60, 60, 60), (x, y, 150, 120), 1)
+        pygame.draw.rect(screen, (40, 40, 40), (x, y, 150, 140))  # Increased height
+        pygame.draw.rect(screen, (60, 60, 60), (x, y, 150, 140), 1)  # Increased height
         
         # Title
         title = self.small_font.render("Equipment:", True, (200, 200, 200))
@@ -120,6 +120,16 @@ class UI:
             text_surface = self.small_font.render(text, True, color)
             screen.blit(text_surface, (x + 10, y))
             y += 20
+            
+        # Show equipped gun
+        if player.gun:
+            text = f"Gun: {player.gun.name}"
+            color = (255, 255, 255)
+        else:
+            text = "Gun: None"
+            color = (150, 150, 150)
+        text_surface = self.small_font.render(text, True, color)
+        screen.blit(text_surface, (x + 10, y))
             
         # Draw inventory if visible
         if player.inventory.visible:
